@@ -63,3 +63,35 @@ it("consecutive text parts are joined into one markdown render", () => {
   const html = renderResponseHtml({ parts: [{ text: "이어지는 **문" }, { text: "장**입니다" }] });
   expect(html).toBe("이어지는 <b>문장</b>입니다");
 });
+
+it("token usage closes the footer after grounding", () => {
+  const html = renderResponseHtml({
+    parts: [{ text: "본문" }],
+    groundingMetadata: { webSearchQueries: ["q"] },
+    usageMetadata: {
+      promptTokenCount: 1234,
+      candidatesTokenCount: 56,
+      thoughtsTokenCount: 789,
+      totalTokenCount: 2079,
+    },
+  });
+
+  expect(html).toBe(
+    [
+      "본문",
+      "",
+      "---",
+      "🔍 <b>검색어</b>: 'q'",
+      "",
+      "<b>토큰</b>: 입력 1,234 / 출력 56 / 생각 789 / 합계 2,079",
+    ].join("\n"),
+  );
+});
+
+it("token usage alone still gets the divider", () => {
+  const html = renderResponseHtml({
+    parts: [{ text: "본문" }],
+    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+  });
+  expect(html).toBe("본문\n\n---\n\n<b>토큰</b>: 입력 10 / 출력 5 / 생각 0 / 합계 15");
+});

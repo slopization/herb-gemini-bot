@@ -55,5 +55,7 @@ export const strings = {
     searchQueries: (quotedJoined: string) => `🔍 <b>검색어</b>: ${quotedJoined}\n`,
     sourcesHeader: "\n📚 <b>출처</b>:\n",
     sourceLine: (anchor: string) => ` - ${anchor}\n`,
+    tokenUsage: (prompt: string, output: string, thoughts: string, total: string) =>
+      `\n<b>토큰</b>: 입력 ${prompt} / 출력 ${output} / 생각 ${thoughts} / 합계 ${total}\n`,
   },
 } as const;

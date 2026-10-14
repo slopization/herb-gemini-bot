@@ -85,7 +85,9 @@ implemented in `src/strings.ts` and nowhere else.
   `<pre><code class="language-…">`, blockquote, tables → `<pre>`, hr → `———`. All
   untrusted text (model output, user echoes) is HTML-escaped exactly once.
 - Parts assembly: text + `[코드 실행]`/`[실행 결과 ✅|❌]`-labeled pre blocks + grounding
-  footer (`---` divider, `🔍 검색어: 'q1', 'q2'`, `📚 출처:` URI-deduped link list).
+  footer (`---` divider, `🔍 검색어: 'q1', 'q2'`, `📚 출처:` URI-deduped link list) +
+  token usage as the last footer line (`토큰: 입력 N / 출력 N / 생각 N / 합계 N`, from
+  usageMetadata; omitted when the response carries none).
 - Splitting: 4096 chars (1024 for a first chunk that becomes an image caption),
   line-based, open tags closed at boundaries and reopened in the next chunk; overlong
   single lines are force-cut outside tags and entities. The first chunk replies to the
