@@ -1,4 +1,4 @@
-import type { GroundingMetadata, Part } from "@google/genai";
+import type { GenerateContentResponseUsageMetadata, GroundingMetadata, Part } from "@google/genai";
 import { strings } from "../strings.ts";
 import { escapeAttribute, escapeHtml, markdownToTelegramHtml, safeHref } from "./markdown.ts";
 
@@ -7,6 +7,7 @@ export interface RenderInput {
   /** Fallback when parts carry no renderable text. */
   text?: string;
   groundingMetadata?: GroundingMetadata;
+  usageMetadata?: GenerateContentResponseUsageMetadata;
 }
 
 /** Gemini response parts + grounding metadata → one sendable Telegram HTML document. */
@@ -37,7 +38,22 @@ export function renderResponseHtml(input: RenderInput): string {
   flush();
   if (segments.length === 0 && input.text) segments.push(markdownToTelegramHtml(input.text));
 
-  return (segments.join("\n\n") + renderGroundingFooter(input.groundingMetadata)).trim();
+  const footer =
+    renderGroundingFooter(input.groundingMetadata) + renderTokenUsage(input.usageMetadata);
+  // the divider belongs to the footer as a whole, not to any single line of it
+  const divided = footer === "" ? "" : `\n${strings.render.groundingDivider}${footer}`;
+  return (segments.join("\n\n") + divided).trim();
+}
+
+function renderTokenUsage(usage: GenerateContentResponseUsageMetadata | undefined): string {
+  if (usage?.totalTokenCount === undefined) return "";
+  const count = (n: number | undefined): string => (n ?? 0).toLocaleString("en-US");
+  return strings.render.tokenUsage(
+    count(usage.promptTokenCount),
+    count(usage.candidatesTokenCount),
+    count(usage.thoughtsTokenCount),
+    count(usage.totalTokenCount),
+  );
 }
 
 function renderGroundingFooter(grounding: GroundingMetadata | undefined): string {
@@ -64,6 +80,5 @@ function renderGroundingFooter(grounding: GroundingMetadata | undefined): string
     }
   }
 
-  // the divider belongs to the footer as a whole, not to the search-query line
-  return footer === "" ? "" : `\n${strings.render.groundingDivider}${footer}`;
+  return footer;
 }

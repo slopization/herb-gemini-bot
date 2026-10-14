@@ -3,6 +3,7 @@ import type {
   GenerateContentConfig,
   GenerateContentParameters,
   GenerateContentResponse,
+  GenerateContentResponseUsageMetadata,
   GroundingMetadata,
   Part,
 } from "@google/genai";
@@ -33,6 +34,7 @@ export type GenResult =
       images: GenImage[];
       text?: string;
       groundingMetadata?: GroundingMetadata;
+      usageMetadata?: GenerateContentResponseUsageMetadata;
     }
   | { ok: false; userMessage: string };
 
@@ -113,6 +115,7 @@ function classifyResponse(response: GenerateContentResponse): GenResult {
 
   const text = response.text;
   const grounding = candidate?.groundingMetadata;
+  const usage = response.usageMetadata;
   if (parts.length === 0 && images.length === 0 && !text) {
     return { ok: false, userMessage: strings.errors.emptyResponse };
   }
@@ -122,6 +125,7 @@ function classifyResponse(response: GenerateContentResponse): GenResult {
     images,
     ...(text ? { text } : {}),
     ...(grounding ? { groundingMetadata: grounding } : {}),
+    ...(usage ? { usageMetadata: usage } : {}),
   };
 }
 

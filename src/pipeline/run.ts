@@ -79,6 +79,7 @@ export async function runAiCommand(deps: Deps, job: AiJob): Promise<void> {
       ...(result.groundingMetadata !== undefined
         ? { groundingMetadata: result.groundingMetadata }
         : {}),
+      ...(result.usageMetadata !== undefined ? { usageMetadata: result.usageMetadata } : {}),
     });
     const chunks = splitHtml(html, result.images.length > 0 ? CAPTION_MAX_LENGTH : MAX_LENGTH);
     if (chunks.length === 0 && result.images.length === 0) {
