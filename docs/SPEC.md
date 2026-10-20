@@ -23,7 +23,7 @@ implemented in `src/strings.ts` and nowhere else.
 - Param tokens (/image resolution): the first case-insensitive match **anywhere** in the
   text is consumed and removed from the prompt (plus one adjacent space — newlines are
   preserved). The same rule applies to explicit, implicit, and history parsing.
-- The 10-minute timeout and the auto-retry limits (12 attempts, per-class windows,
+- The 30-minute timeout and the auto-retry limits (12 attempts, per-class windows,
   backoff) are code constants, not env.
 
 ## Conversation mechanics

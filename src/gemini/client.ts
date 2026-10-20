@@ -39,7 +39,7 @@ export type GenResult =
   | { ok: false; userMessage: string };
 
 const MAX_ATTEMPTS = 12;
-const TIMEOUT_MS = 10 * 60 * 1000;
+const TIMEOUT_MS = 30 * 60 * 1000;
 // 429/503 are per-request capacity shedding; other 5xx usually come from the request itself
 const OVERLOAD_RETRY_WINDOW_MS = 2 * 60 * 1000;
 const TRANSIENT_RETRY_WINDOW_MS = 15 * 1000;
