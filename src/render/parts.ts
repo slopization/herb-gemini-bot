@@ -4,8 +4,6 @@ import { escapeAttribute, escapeHtml, markdownToTelegramHtml, safeHref } from ".
 
 export interface RenderInput {
   parts: Part[];
-  /** Fallback when parts carry no renderable text. */
-  text?: string;
   groundingMetadata?: GroundingMetadata;
   usageMetadata?: GenerateContentResponseUsageMetadata;
 }
@@ -36,7 +34,9 @@ export function renderResponseHtml(input: RenderInput): string {
     }
   }
   flush();
-  if (segments.length === 0 && input.text) segments.push(markdownToTelegramHtml(input.text));
+  // "" is what the pipeline reads as an empty response, so a footer never stands in for content
+  const hasImage = input.parts.some((part) => part.inlineData?.mimeType?.startsWith("image/"));
+  if (segments.length === 0 && !hasImage) return "";
 
   const footer =
     renderGroundingFooter(input.groundingMetadata) + renderTokenUsage(input.usageMetadata);

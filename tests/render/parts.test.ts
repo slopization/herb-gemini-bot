@@ -95,3 +95,20 @@ it("token usage alone still gets the divider", () => {
   });
   expect(html).toBe("본문\n\n---\n\n<b>토큰</b>: 입력 10 / 출력 5 / 생각 0 / 합계 15");
 });
+
+it("a footer with nothing to annotate renders as empty", () => {
+  const html = renderResponseHtml({
+    parts: [{ text: "", thoughtSignature: "sig" }],
+    groundingMetadata: { webSearchQueries: ["q"] },
+    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 0, totalTokenCount: 10 },
+  });
+  expect(html).toBe("");
+});
+
+it("an image-only response keeps the footer as its caption", () => {
+  const html = renderResponseHtml({
+    parts: [{ inlineData: { mimeType: "image/png", data: "cG5n" } }],
+    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+  });
+  expect(html).toBe("---\n\n<b>토큰</b>: 입력 10 / 출력 5 / 생각 0 / 합계 15");
+});

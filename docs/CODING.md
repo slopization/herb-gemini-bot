@@ -76,8 +76,12 @@ handlers or services. docs/SPEC.md copy is canonical — do not reword. Untruste
 - pino only (`src/log.ts`); console.* is banned (Biome-enforced, log.ts excepted).
 - Log errors under the `err` key — the serializer redacts `key=` query params. Never
   stringify or print error objects yourself (API-key leak path).
-- Child loggers carry `{ chatId, messageId, command }`.
+- Child loggers carry `{ chatId, messageId, command }`; Gemini calls add `{ model }`.
 - Steady state emits one info line per handled request; flow tracing is debug.
+- Dependencies report through `console.*`; `captureConsole()` in main routes those lines
+  into pino as `{ source: "console" }` — they get a level and a time, but no request context.
+- A rejected or truncated Gemini response is a warn line carrying `partKinds` — the
+  response's part field names, which is what `response.text` would have warned about.
 
 ## No gates
 

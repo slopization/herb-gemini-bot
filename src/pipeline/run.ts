@@ -2,7 +2,7 @@ import type { Message } from "grammy/types";
 import type { AiCommandSpec } from "../commands/specs.ts";
 import type { Config } from "../config.ts";
 import type { Repo } from "../db/repo.ts";
-import type { GeminiClient, GenRequest } from "../gemini/client.ts";
+import { type GeminiClient, type GenRequest, partKinds } from "../gemini/client.ts";
 import { log } from "../log.ts";
 import { renderResponseHtml } from "../render/parts.ts";
 import { CAPTION_MAX_LENGTH, MAX_LENGTH, splitHtml } from "../render/split.ts";
@@ -67,7 +67,7 @@ export async function runAiCommand(deps: Deps, job: AiJob): Promise<void> {
     };
 
     jobLog.debug({ turns: turns.length }, "gemini 요청");
-    const result = await deps.gemini.generate(request);
+    const result = await deps.gemini.generate(request, jobLog);
     if (!result.ok) {
       await sendErrorAndMark(deps, job, result.userMessage);
       return;
@@ -75,7 +75,6 @@ export async function runAiCommand(deps: Deps, job: AiJob): Promise<void> {
 
     const html = renderResponseHtml({
       parts: result.parts,
-      ...(result.text !== undefined ? { text: result.text } : {}),
       ...(result.groundingMetadata !== undefined
         ? { groundingMetadata: result.groundingMetadata }
         : {}),
@@ -84,6 +83,10 @@ export async function runAiCommand(deps: Deps, job: AiJob): Promise<void> {
     const chunks = splitHtml(html, result.images.length > 0 ? CAPTION_MAX_LENGTH : MAX_LENGTH);
     if (chunks.length === 0 && result.images.length === 0) {
       // parts existed but none of them render — never leave the user with silence
+      jobLog.warn(
+        { partKinds: partKinds(result.parts), finishReason: result.finishReason },
+        "렌더할 응답 내용 없음",
+      );
       await sendErrorAndMark(deps, job, strings.errors.emptyResponse);
       return;
     }
@@ -114,7 +117,15 @@ export async function runAiCommand(deps: Deps, job: AiJob): Promise<void> {
       ...(job.retryPlaceholderId !== undefined ? { placeholderId: job.retryPlaceholderId } : {}),
     });
 
-    jobLog.info({ chunks: chunks.length, images: result.images.length }, "응답 전송 완료");
+    jobLog.info(
+      {
+        chunks: chunks.length,
+        images: result.images.length,
+        partKinds: partKinds(result.parts),
+        ...(result.finishReason !== undefined ? { finishReason: result.finishReason } : {}),
+      },
+      "응답 전송 완료",
+    );
   } catch (error) {
     jobLog.error({ err: error }, "파이프라인 예외");
     await sendErrorAndMark(deps, job, strings.errors.unexpected);

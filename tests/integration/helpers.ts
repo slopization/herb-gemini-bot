@@ -165,6 +165,11 @@ export function apiError(status: number, message?: string): Error {
   return Object.assign(new Error(message ?? `{"error":{"code":${status}}}`), { status });
 }
 
+/** Prompt-level refusal: promptFeedback only, no candidates. */
+export function blockedResponse(blockReason: string): GenerateContentResponse {
+  return { promptFeedback: { blockReason } } as unknown as GenerateContentResponse;
+}
+
 export function imageResponse(caption: string | undefined): GenerateContentResponse {
   const parts: Part[] = [
     ...(caption ? [{ text: caption }] : []),

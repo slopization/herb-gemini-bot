@@ -1,3 +1,4 @@
+import { format } from "node:util";
 import { pino } from "pino";
 
 // Gemini SDK error strings can embed URLs carrying `?key=<api key>` — strip it from every logged error.
@@ -26,3 +27,23 @@ export const log = pino({
     ? { transport: { target: "pino-pretty", options: { singleLine: true } } }
     : {}),
 });
+
+export type Log = typeof log;
+
+const CONSOLE_ROUTES = [
+  ["log", "debug"],
+  ["info", "debug"],
+  ["debug", "debug"],
+  ["warn", "warn"],
+  ["error", "error"],
+] as const;
+
+/** @google/genai reports response-shape and deprecation notices through console.* — those lines
+ *  reach stdout with no level, time or context unless they are routed into pino. */
+export function captureConsole(): void {
+  for (const [method, level] of CONSOLE_ROUTES) {
+    console[method] = (...args: unknown[]): void => {
+      log[level]({ source: "console" }, redactText(format(...args)));
+    };
+  }
+}

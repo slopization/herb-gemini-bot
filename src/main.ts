@@ -8,7 +8,7 @@ import { loadConfig } from "./config.ts";
 import { openDb } from "./db/database.ts";
 import { Repo } from "./db/repo.ts";
 import { GeminiClient } from "./gemini/client.ts";
-import { log } from "./log.ts";
+import { captureConsole, log } from "./log.ts";
 import type { Deps } from "./pipeline/run.ts";
 import { createTelegramFileFetcher, FileCache } from "./telegram/files.ts";
 import { createHandlers } from "./telegram/handlers.ts";
@@ -17,6 +17,7 @@ import { Sender } from "./telegram/sender.ts";
 const SHUTDOWN_DRAIN_MS = 8000;
 
 async function main(): Promise<void> {
+  captureConsole();
   const cfg = loadConfig();
 
   // Some networks cannot route the AAAA records Telegram and Gemini resolve to.

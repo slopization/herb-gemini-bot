@@ -1,7 +1,9 @@
+import { Language, Outcome } from "@google/genai";
 import type { Message } from "grammy/types";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   apiError,
+  blockedResponse,
   CHAT,
   callback,
   createFakeGemini,
@@ -406,4 +408,67 @@ it("a shutdown during a retry wait stops retrying and answers nothing", async ()
 
   expect(bot.gemini.requests).toHaveLength(1);
   expect(bot.telegram.callsOf("sendMessage")).toHaveLength(0);
+});
+
+it("a code-execution answer sends its code, its output, and its text in one message", async () => {
+  const bot = createTestBot(
+    createFakeGemini(
+      textResponse("", [
+        {
+          executableCode: { code: "print(2**10)", language: Language.PYTHON },
+          thoughtSignature: "sig",
+        },
+        { codeExecutionResult: { outcome: Outcome.OUTCOME_OK, output: "1024" } },
+        { text: "답은 **1024**입니다" },
+      ]),
+    ),
+  );
+  const msg = userMsg({ text: "/gemini 2의 10제곱 계산해줘" });
+
+  await bot.handlers.onMessage(msg);
+
+  const sends = bot.telegram.callsOf("sendMessage");
+  expect(sends).toHaveLength(1);
+  expect(sends[0]?.text).toBe(
+    [
+      '<b>[코드 실행]</b>\n<pre><code class="language-python">print(2**10)</code></pre>',
+      "",
+      "<b>[실행 결과 ✅]</b>\n<pre><code>1024</code></pre>",
+      "",
+      "답은 <b>1024</b>입니다",
+    ].join("\n"),
+  );
+  expect(sends[0]?.other?.reply_markup).toBeUndefined();
+});
+
+it("a prompt blocked by the API answers with the block copy and a retry button", async () => {
+  const bot = createTestBot(createFakeGemini(blockedResponse("OTHER")));
+  const msg = userMsg({ text: "/gemini 차단되는 프롬프트" });
+
+  await bot.handlers.onMessage(msg);
+
+  const send = bot.telegram.callsOf("sendMessage")[0];
+  expect(send?.text).toBe("프롬프트 차단됨: OTHER");
+  expect(send?.other?.reply_markup?.inline_keyboard?.[0]?.[0]).toEqual({
+    text: "🔄 재시도",
+    callback_data: `retry_${msg.message_id}`,
+  });
+  expect(bot.repo.getCommandType(CHAT, send?.message.message_id as number)).toBe("error");
+});
+
+it("a response whose parts render nothing answers with the empty-response copy, not a bare footer", async () => {
+  const response = textResponse("", [{ text: "", thoughtSignature: "sig" }]);
+  response.usageMetadata = { promptTokenCount: 10, candidatesTokenCount: 0, totalTokenCount: 10 };
+  const bot = createTestBot(createFakeGemini(response));
+  const msg = userMsg({ text: "/gemini 아무 질문" });
+
+  await bot.handlers.onMessage(msg);
+
+  const sends = bot.telegram.callsOf("sendMessage");
+  expect(sends).toHaveLength(1);
+  expect(sends[0]?.text).toBe("응답에 데이터가 없습니다.");
+  expect(sends[0]?.other?.reply_markup?.inline_keyboard?.[0]?.[0]).toEqual({
+    text: "🔄 재시도",
+    callback_data: `retry_${msg.message_id}`,
+  });
 });
