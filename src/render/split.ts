@@ -1,39 +1,67 @@
-export const MAX_LENGTH = 4096;
-export const CAPTION_MAX_LENGTH = 1024;
+// Telegram silently truncates rich HTML input past ~35000 UTF-8 bytes and rejects more
+// than 32768 characters of text; a byte budget at the documented figure satisfies both.
+export const MAX_BYTES = 32768;
+// Telegram rejects more than 500 blocks; every block tag is counted, nested ones included.
+export const MAX_BLOCKS = 500;
 
 interface OpenTag {
   name: string;
   open: string;
 }
 
-const TAG_RE = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:\s[^>]*)?)>/g;
+const TAG_RE = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:\s[^>]*?)?)(\/?)>/g;
+const VOID_TAGS = new Set(["br", "hr", "input", "img"]);
+const BLOCK_TAGS = new Set([
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "pre",
+  "blockquote",
+  "ul",
+  "ol",
+  "li",
+  "table",
+  "tr",
+  "hr",
+  "footer",
+  "tg-math-block",
+]);
 
 /**
- * Split finished Telegram HTML into sendable chunks: line-based accumulation,
- * closing open tags at each boundary and reopening them in the next chunk.
- * Overlong single lines are cut outside tags, entities and surrogate pairs.
+ * Split finished rich HTML into sendable chunks: line-based accumulation, closing open
+ * tags at each boundary and reopening them in the next chunk. Overlong single lines are
+ * cut outside tags, entities and surrogate pairs.
  */
-export function splitHtml(html: string, firstChunkLimit: number = MAX_LENGTH): string[] {
+export function splitRichHtml(html: string): string[] {
   if (html.trim() === "") return [];
 
   const chunks: string[] = [];
   let stack: OpenTag[] = [];
   let current = "";
-  let limit = firstChunkLimit;
+  let currentBytes = 0;
+  let currentBlocks = 0;
 
   const finalize = (): void => {
-    emit(chunks, current.replace(/\n+$/, "") + closersOf(stack));
+    emit(chunks, current.replace(/(?:<br\/>)?\n*$/, "") + closersOf(stack));
     current = "";
-    limit = MAX_LENGTH;
+    currentBytes = 0;
+    currentBlocks = 0;
   };
 
   for (const rawLine of html.split("\n")) {
     const stackAfter = [...stack];
     scanTags(rawLine, stackAfter);
-    const joined = current === "" ? rawLine : `${current}\n${rawLine}`;
+    const joinedBytes = currentBytes + (current === "" ? 0 : 1) + byteLength(rawLine);
+    const joinedBlocks = currentBlocks + blocksIn(rawLine);
 
-    if (joined.length + closersLengthOf(stackAfter) <= limit) {
-      current = joined;
+    if (joinedBytes + closersBytesOf(stackAfter) <= MAX_BYTES && joinedBlocks <= MAX_BLOCKS) {
+      current = current === "" ? rawLine : `${current}\n${rawLine}`;
+      currentBytes = joinedBytes;
+      currentBlocks = joinedBlocks;
       stack = stackAfter;
       continue;
     }
@@ -47,10 +75,11 @@ export function splitHtml(html: string, firstChunkLimit: number = MAX_LENGTH): s
       line = reopen + line;
     }
 
-    const rest = cutLine(line, limit, chunks);
+    const rest = cutLine(line, chunks);
     current = rest.text;
+    currentBytes = byteLength(current);
+    currentBlocks = blocksIn(current);
     stack = rest.stack;
-    limit = MAX_LENGTH;
   }
 
   if (current !== "") finalize();
@@ -62,18 +91,14 @@ export function splitHtml(html: string, firstChunkLimit: number = MAX_LENGTH): s
  * Each pass rescans only the segment it emits, so the whole line is walked a
  * bounded number of times regardless of its length.
  */
-function cutLine(
-  line: string,
-  firstLimit: number,
-  out: string[],
-): { text: string; stack: OpenTag[] } {
-  let limit = firstLimit;
+function cutLine(line: string, out: string[]): { text: string; stack: OpenTag[] } {
+  const prefix = prefixBytes(line);
   let segStart = 0;
   let openers = "";
   let stack: OpenTag[] = [];
 
   for (;;) {
-    const at = findCut(line, segStart, stack, openers.length, limit);
+    const at = findCut(line, prefix, segStart, stack, byteLength(openers));
     if (at === undefined) break;
 
     const segment = line.slice(segStart, at);
@@ -85,12 +110,11 @@ function cutLine(
     stack = stackAtCut;
     // openers with no room left for content would repeat on every pass, one character
     // at a time — drop the formatting instead and emit the remainder plain
-    if (openers.length + closersLengthOf(stack) >= MAX_LENGTH) {
+    if (byteLength(openers) + closersBytesOf(stack) >= MAX_BYTES) {
       openers = "";
       stack = [];
     }
     segStart = at;
-    limit = MAX_LENGTH;
   }
 
   const tail = line.slice(segStart);
@@ -108,17 +132,19 @@ function cutLine(
  */
 function findCut(
   line: string,
+  prefix: readonly number[],
   from: number,
   baseStack: readonly OpenTag[],
-  openersLen: number,
-  limit: number,
+  openersBytes: number,
 ): number | undefined {
   const stack = [...baseStack];
-  let closers = closersLengthOf(stack);
+  let closers = closersBytesOf(stack);
   let best = from;
   let inTag = false;
   let tagStart = 0;
   let sawContent = false;
+  const bytesBetween = (start: number, end: number): number =>
+    (prefix[end] ?? 0) - (prefix[start] ?? 0);
 
   for (let i = from; i < line.length; i++) {
     const ch = line[i];
@@ -128,7 +154,7 @@ function findCut(
     } else if (inTag && ch === ">") {
       inTag = false;
       scanTags(line.slice(tagStart, i + 1), stack);
-      closers = closersLengthOf(stack);
+      closers = closersBytesOf(stack);
     } else if (!inTag) {
       sawContent = true;
     }
@@ -136,12 +162,12 @@ function findCut(
 
     const at = safeBoundary(line, i + 1);
     if (at <= best) continue;
-    if (openersLen + (at - from) + closers <= limit) best = at;
+    if (openersBytes + bytesBetween(from, at) + closers <= MAX_BYTES) best = at;
     else if (best > from) return best;
     else return at;
   }
 
-  if (openersLen + (line.length - from) + closers <= limit) return undefined;
+  if (openersBytes + bytesBetween(from, line.length) + closers <= MAX_BYTES) return undefined;
   return best > from ? best : undefined;
 }
 
@@ -156,6 +182,7 @@ function scanTags(fragment: string, stack: OpenTag[]): void {
   while (match !== null) {
     const closing = match[1] === "/";
     const name = (match[2] ?? "").toLowerCase();
+    const selfClosing = match[4] === "/" || VOID_TAGS.has(name);
     if (closing) {
       for (let i = stack.length - 1; i >= 0; i--) {
         if (stack[i]?.name === name) {
@@ -163,11 +190,22 @@ function scanTags(fragment: string, stack: OpenTag[]): void {
           break;
         }
       }
-    } else {
+    } else if (!selfClosing) {
       stack.push({ name, open: match[0] });
     }
     match = TAG_RE.exec(fragment);
   }
+}
+
+function blocksIn(fragment: string): number {
+  let count = 0;
+  TAG_RE.lastIndex = 0;
+  let match = TAG_RE.exec(fragment);
+  while (match !== null) {
+    if (match[1] !== "/" && BLOCK_TAGS.has((match[2] ?? "").toLowerCase())) count += 1;
+    match = TAG_RE.exec(fragment);
+  }
+  return count;
 }
 
 function closersOf(stack: readonly OpenTag[]): string {
@@ -177,7 +215,7 @@ function closersOf(stack: readonly OpenTag[]): string {
     .join("");
 }
 
-function closersLengthOf(stack: readonly OpenTag[]): number {
+function closersBytesOf(stack: readonly OpenTag[]): number {
   let total = 0;
   for (const tag of stack) total += tag.name.length + 3;
   return total;
@@ -185,6 +223,22 @@ function closersLengthOf(stack: readonly OpenTag[]): number {
 
 function openersOf(stack: readonly OpenTag[]): string {
   return stack.map((t) => t.open).join("");
+}
+
+function byteLength(text: string): number {
+  return Buffer.byteLength(text, "utf8");
+}
+
+/** prefix[i] = UTF-8 bytes of text.slice(0, i); a surrogate half counts 2 so pairs sum to 4. */
+function prefixBytes(text: string): number[] {
+  const prefix = [0];
+  let total = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    total += code < 0x80 ? 1 : code < 0x800 ? 2 : code >= 0xd800 && code <= 0xdfff ? 2 : 3;
+    prefix.push(total);
+  }
+  return prefix;
 }
 
 /** Pull a cut point out of an `&...;` entity (8-char lookback) or a surrogate pair. */

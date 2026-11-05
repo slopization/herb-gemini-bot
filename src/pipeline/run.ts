@@ -5,7 +5,7 @@ import type { Repo } from "../db/repo.ts";
 import { type GeminiClient, type GenRequest, partKinds } from "../gemini/client.ts";
 import { log } from "../log.ts";
 import { renderResponseHtml } from "../render/parts.ts";
-import { CAPTION_MAX_LENGTH, MAX_LENGTH, splitHtml } from "../render/split.ts";
+import { splitRichHtml } from "../render/split.ts";
 import { strings } from "../strings.ts";
 import type { FileCache } from "../telegram/files.ts";
 import type { Sender } from "../telegram/sender.ts";
@@ -80,7 +80,7 @@ export async function runAiCommand(deps: Deps, job: AiJob): Promise<void> {
         : {}),
       ...(result.usageMetadata !== undefined ? { usageMetadata: result.usageMetadata } : {}),
     });
-    const chunks = splitHtml(html, result.images.length > 0 ? CAPTION_MAX_LENGTH : MAX_LENGTH);
+    const chunks = splitRichHtml(html);
     if (chunks.length === 0 && result.images.length === 0) {
       // parts existed but none of them render — never leave the user with silence
       jobLog.warn(

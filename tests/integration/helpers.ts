@@ -61,6 +61,17 @@ export function createFakeTelegram(): FakeTelegram {
       return message;
     },
     // biome-ignore lint/suspicious/noExplicitAny: same as above
+    async sendRichMessage(chatId: number, rich: { html: string }, other?: any) {
+      // the real Bot API parses the HTML into blocks; one plain paragraph is enough here
+      const text = rich.html.replace(/<[^>]*>/g, "");
+      const message = mkMsg(chatId, {
+        rich_message: { blocks: [{ type: "paragraph", text }] },
+        ...replyEcho(chatId, other),
+      });
+      calls.push({ method: "sendRichMessage", chatId, html: rich.html, other, message });
+      return message;
+    },
+    // biome-ignore lint/suspicious/noExplicitAny: same as above
     async sendPhoto(chatId: number, _photo: unknown, other?: any) {
       const message = mkMsg(chatId, {
         photo: [{ file_id: `p${nextId}`, file_unique_id: `up${nextId}`, width: 1, height: 1 }],

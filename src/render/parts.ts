@@ -1,6 +1,13 @@
 import type { GenerateContentResponseUsageMetadata, GroundingMetadata, Part } from "@google/genai";
 import { strings } from "../strings.ts";
-import { escapeAttribute, escapeHtml, markdownToTelegramHtml, safeHref } from "./markdown.ts";
+import {
+  BR,
+  codeBlock,
+  escapeAttribute,
+  escapeHtml,
+  markdownToRichHtml,
+  safeHref,
+} from "./markdown.ts";
 
 export interface RenderInput {
   parts: Part[];
@@ -8,12 +15,12 @@ export interface RenderInput {
   usageMetadata?: GenerateContentResponseUsageMetadata;
 }
 
-/** Gemini response parts + grounding metadata → one sendable Telegram HTML document. */
+/** Gemini response parts + grounding metadata → one Telegram rich HTML document. */
 export function renderResponseHtml(input: RenderInput): string {
   const segments: string[] = [];
   let mdBuffer = "";
   const flush = (): void => {
-    if (mdBuffer.trim() !== "") segments.push(markdownToTelegramHtml(mdBuffer));
+    if (mdBuffer.trim() !== "") segments.push(markdownToRichHtml(mdBuffer));
     mdBuffer = "";
   };
 
@@ -23,13 +30,13 @@ export function renderResponseHtml(input: RenderInput): string {
     } else if (part.executableCode) {
       flush();
       segments.push(
-        `${strings.render.codeExecutionLabel}\n<pre><code class="language-python">${escapeHtml(part.executableCode.code ?? "")}</code></pre>`,
+        `<p>${strings.render.codeExecutionLabel}</p>\n${codeBlock(part.executableCode.code ?? "", "python")}`,
       );
     } else if (part.codeExecutionResult) {
       flush();
       const ok = part.codeExecutionResult.outcome === "OUTCOME_OK";
       segments.push(
-        `${strings.render.executionResultLabel(ok)}\n<pre><code>${escapeHtml(part.codeExecutionResult.output ?? "")}</code></pre>`,
+        `<p>${strings.render.executionResultLabel(ok)}</p>\n${codeBlock(part.codeExecutionResult.output ?? "")}`,
       );
     }
   }
@@ -38,32 +45,37 @@ export function renderResponseHtml(input: RenderInput): string {
   const hasImage = input.parts.some((part) => part.inlineData?.mimeType?.startsWith("image/"));
   if (segments.length === 0 && !hasImage) return "";
 
-  const footer =
-    renderGroundingFooter(input.groundingMetadata) + renderTokenUsage(input.usageMetadata);
-  // the divider belongs to the footer as a whole, not to any single line of it
-  const divided = footer === "" ? "" : `\n${strings.render.groundingDivider}${footer}`;
-  return (segments.join("\n\n") + divided).trim();
+  const footer = [
+    ...renderGroundingFooter(input.groundingMetadata),
+    ...renderTokenUsage(input.usageMetadata),
+  ];
+  // the divider belongs to the footer as a whole, not to any single section of it
+  if (footer.length > 0) segments.push(`<hr/>\n<footer>${footer.join(BR + BR)}</footer>`);
+  return segments.join("\n");
 }
 
-function renderTokenUsage(usage: GenerateContentResponseUsageMetadata | undefined): string {
-  if (usage?.totalTokenCount === undefined) return "";
+function renderTokenUsage(usage: GenerateContentResponseUsageMetadata | undefined): string[] {
+  if (usage?.totalTokenCount === undefined) return [];
   const count = (n: number | undefined): string => (n ?? 0).toLocaleString("en-US");
-  return strings.render.tokenUsage(
-    count(usage.promptTokenCount),
-    count(usage.candidatesTokenCount),
-    count(usage.thoughtsTokenCount),
-    count(usage.totalTokenCount),
-  );
+  return [
+    strings.render.tokenUsage(
+      count(usage.promptTokenCount),
+      count(usage.candidatesTokenCount),
+      count(usage.thoughtsTokenCount),
+      count(usage.totalTokenCount),
+    ),
+  ];
 }
 
-function renderGroundingFooter(grounding: GroundingMetadata | undefined): string {
-  if (!grounding) return "";
+/** Footer sections, each one or more lines already joined by line breaks. */
+function renderGroundingFooter(grounding: GroundingMetadata | undefined): string[] {
+  if (!grounding) return [];
 
-  let footer = "";
+  const sections: string[] = [];
   const queries = grounding.webSearchQueries ?? [];
   if (queries.length > 0) {
     const joined = queries.map((q) => `'${escapeHtml(q)}'`).join(", ");
-    footer += strings.render.searchQueries(joined);
+    sections.push(strings.render.searchQueries(joined));
   }
 
   const sources = new Map<string, string>();
@@ -71,14 +83,17 @@ function renderGroundingFooter(grounding: GroundingMetadata | undefined): string
     if (chunk.web?.uri && chunk.web.title) sources.set(chunk.web.uri, chunk.web.title);
   }
   if (sources.size > 0) {
-    footer += strings.render.sourcesHeader;
+    const lines: string[] = [strings.render.sourcesHeader];
     for (const [uri, title] of sources) {
       const href = safeHref(uri);
-      footer += strings.render.sourceLine(
-        href ? `<a href="${escapeAttribute(href)}">${escapeHtml(title)}</a>` : escapeHtml(title),
+      lines.push(
+        strings.render.sourceLine(
+          href ? `<a href="${escapeAttribute(href)}">${escapeHtml(title)}</a>` : escapeHtml(title),
+        ),
       );
     }
+    sections.push(lines.join(BR));
   }
 
-  return footer;
+  return sections;
 }

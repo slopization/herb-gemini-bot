@@ -10,6 +10,7 @@ import { strings } from "../strings.ts";
 export type TelegramPort = Pick<
   Api,
   | "sendMessage"
+  | "sendRichMessage"
   | "sendPhoto"
   | "sendMediaGroup"
   | "sendDocument"
@@ -91,10 +92,10 @@ export class Sender {
   }
 
   /**
-   * Send an AI reply: delete placeholder → images (photo/mediaGroup, first chunk as
-   * caption) → remaining chunks chained → original-quality documents replying to the
-   * first message. Returns the whole response set (documents included) so the
-   * pipeline can meta-link every member to the first message.
+   * Send an AI reply: delete placeholder → images (photo/mediaGroup) → rich text chunks
+   * chained → original-quality documents replying to the first message. Returns the
+   * whole response set (documents included) so the pipeline can meta-link every member
+   * to the first message.
    */
   async replyChunked(options: ReplyChunkedOptions): Promise<Message[]> {
     if (options.placeholderId !== undefined) {
@@ -106,14 +107,12 @@ export class Sender {
     }
 
     const sent: Message[] = [];
-    const chunks = [...options.chunks];
     let replyTarget = options.replyTo;
 
     if (options.images.length > 0) {
-      const caption = chunks.shift();
       // a rejected photo must not discard the text; the document re-send below still runs
       try {
-        const posted = await this.sendImages(options, caption, replyTarget);
+        const posted = await this.sendImages(options, replyTarget);
         for (const message of posted) {
           sent.push(message);
           this.record(message, options.onSent);
@@ -121,15 +120,15 @@ export class Sender {
         replyTarget = posted[0]?.message_id ?? replyTarget;
       } catch (error) {
         log.warn({ err: error, chatId: options.chatId }, "이미지 전송 실패");
-        if (caption !== undefined) chunks.unshift(caption);
       }
     }
 
-    for (const chunk of chunks) {
-      const sentText = await this.port.sendMessage(options.chatId, chunk, {
-        parse_mode: "HTML",
-        reply_parameters: { message_id: replyTarget },
-      });
+    for (const chunk of options.chunks) {
+      const sentText = await this.port.sendRichMessage(
+        options.chatId,
+        { html: chunk },
+        { reply_parameters: { message_id: replyTarget } },
+      );
       sent.push(sentText);
       this.record(sentText, options.onSent);
       replyTarget = sentText.message_id;
@@ -145,23 +144,17 @@ export class Sender {
     return sent;
   }
 
-  private async sendImages(
-    options: ReplyChunkedOptions,
-    caption: string | undefined,
-    replyTo: number,
-  ): Promise<Message[]> {
+  private async sendImages(options: ReplyChunkedOptions, replyTo: number): Promise<Message[]> {
     const [only] = options.images;
     if (options.images.length === 1 && only) {
       const sentPhoto = await this.port.sendPhoto(options.chatId, new InputFile(only.buffer), {
-        ...(caption ? { caption, parse_mode: "HTML" as const } : {}),
         reply_parameters: { message_id: replyTo },
       });
       return [sentPhoto];
     }
-    const media = options.images.map((image, index) => ({
+    const media = options.images.map((image) => ({
       type: "photo" as const,
       media: new InputFile(image.buffer),
-      ...(index === 0 && caption ? { caption, parse_mode: "HTML" as const } : {}),
     }));
     return this.port.sendMediaGroup(options.chatId, media, {
       reply_parameters: { message_id: replyTo },

@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { CHAT_PROMPT } from "../../src/commands/specs.ts";
 import {
   apiError,
+  BOT_ID,
   blockedResponse,
   CHAT,
   callback,
@@ -21,7 +22,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it("scenario 1: /gemini question sends a spec-shaped request, HTML reply, reactions, and meta", async () => {
+it("scenario 1: /gemini question sends a spec-shaped request, rich reply, reactions, and meta", async () => {
   const bot = createTestBot(createFakeGemini(textResponse("**답**입니다")));
   const msg = userMsg({ text: "/gemini 오늘 날씨 알려줘" });
 
@@ -35,13 +36,11 @@ it("scenario 1: /gemini question sends a spec-shaped request, HTML reply, reacti
   expect(config.tools).toEqual([{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }]);
   expect(config.thinkingConfig).toEqual({ thinkingBudget: 32768 });
 
-  const sends = bot.telegram.callsOf("sendMessage");
+  expect(bot.telegram.callsOf("sendMessage")).toHaveLength(0);
+  const sends = bot.telegram.callsOf("sendRichMessage");
   expect(sends).toHaveLength(1);
-  expect(sends[0]?.text).toBe("<b>답</b>입니다");
-  expect(sends[0]?.other).toMatchObject({
-    parse_mode: "HTML",
-    reply_parameters: { message_id: msg.message_id },
-  });
+  expect(sends[0]?.html).toBe("<p><b>답</b>입니다</p>");
+  expect(sends[0]?.other).toEqual({ reply_parameters: { message_id: msg.message_id } });
 
   const reactions = bot.telegram.callsOf("setMessageReaction");
   expect(reactions[0]?.reaction).toEqual([{ type: "emoji", emoji: "👍" }]);
@@ -58,7 +57,7 @@ it("scenario 2: a command-less reply continues as [user, model(stored parts), us
   const first = userMsg({ text: "/gemini 첫 질문" });
   await bot.handlers.onMessage(first);
 
-  const botMessage = bot.telegram.callsOf("sendMessage")[0]?.message as Message;
+  const botMessage = bot.telegram.callsOf("sendRichMessage")[0]?.message as Message;
   const followUp = userMsg({ text: "더 자세히", reply_to_message: botMessage as never });
   await bot.handlers.onMessage(followUp);
 
@@ -96,7 +95,7 @@ it("scenario 3: an album of 3 with a caption yields one request with 3 inlineDat
 });
 
 it("scenario 4: a long reply chains chunks — first replies to the user, pre tags balanced", async () => {
-  const longCode = Array.from({ length: 400 }, (_, i) => `print("line ${i}")`).join("\n");
+  const longCode = Array.from({ length: 3000 }, (_, i) => `print("line ${i}")`).join("\n");
   const bot = createTestBot(
     createFakeGemini(textResponse(`설명입니다\n\n\`\`\`python\n${longCode}\n\`\`\``)),
   );
@@ -104,15 +103,16 @@ it("scenario 4: a long reply chains chunks — first replies to the user, pre ta
 
   await bot.handlers.onMessage(msg);
 
-  const sends = bot.telegram.callsOf("sendMessage");
+  const sends = bot.telegram.callsOf("sendRichMessage");
   expect(sends.length).toBeGreaterThan(1);
   expect(sends[0]?.other?.reply_parameters?.message_id).toBe(msg.message_id);
   for (let i = 1; i < sends.length; i++) {
     expect(sends[i]?.other?.reply_parameters?.message_id).toBe(sends[i - 1]?.message.message_id);
   }
+  for (const send of sends) expect(Buffer.byteLength(send.html)).toBeLessThanOrEqual(32768);
   // the cut chunk closes its tags and the next one reopens them
-  expect(sends[0]?.text).toMatch(/<\/code><\/pre>$/);
-  expect(sends[1]?.text).toMatch(/^<pre><code class="language-python">/);
+  expect(sends[0]?.html).toMatch(/<\/code><\/pre>$/);
+  expect(sends[1]?.html).toMatch(/^<pre><code class="language-python">/);
   const firstId = sends[0]?.message.message_id as number;
   const secondId = sends[1]?.message.message_id as number;
   expect(bot.repo.getModelParts(CHAT, secondId)).toEqual(bot.repo.getModelParts(CHAT, firstId));
@@ -143,8 +143,8 @@ it("scenario 5: error → 🔄 button → successful retry deletes the placehold
   const edits = bot.telegram.callsOf("editMessageText");
   expect(edits[0]).toMatchObject({ messageId: errorMsgId, text: "⏳ 재시도 중입니다..." });
   expect(bot.telegram.callsOf("deleteMessage")[0]?.messageId).toBe(errorMsgId);
-  const retrySend = bot.telegram.callsOf("sendMessage").at(-1);
-  expect(retrySend?.text).toBe("재시도 성공");
+  const retrySend = bot.telegram.callsOf("sendRichMessage").at(-1);
+  expect(retrySend?.html).toBe("<p>재시도 성공</p>");
   expect(retrySend?.other?.reply_parameters?.message_id).toBe(msg.message_id);
 });
 
@@ -183,7 +183,7 @@ it("scenario 6: replying to a summary continues as plain gemini", async () => {
   expect(summaryRequest.systemInstruction).toContain("고밀도 정보 분석가");
   expect(summaryRequest.temperature).toBe(0);
 
-  const summaryMsg = bot.telegram.callsOf("sendMessage")[0]?.message as Message;
+  const summaryMsg = bot.telegram.callsOf("sendRichMessage")[0]?.message as Message;
   await bot.handlers.onMessage(
     userMsg({ text: "더 요약해줘", reply_to_message: summaryMsg as never }),
   );
@@ -213,7 +213,7 @@ it("scenario 7: unauthorized chats get no response and no DB rows", async () => 
   expect(bot.repo.getMessage(55, strangerMsg.message_id)).toBeUndefined();
 });
 
-it("scenario 8: a mid-text 4k token sets imageSize 4K, strips the token, sends photo+document", async () => {
+it("scenario 8: a mid-text 4k token sets imageSize 4K, strips the token, sends photo+text+document", async () => {
   const bot = createTestBot(createFakeGemini(imageResponse("그렸어요")));
   const msg = userMsg({ text: "/image 고양이를 4k 로 그려줘" });
 
@@ -227,8 +227,12 @@ it("scenario 8: a mid-text 4k token sets imageSize 4K, strips the token, sends p
   expect(parts.at(-1)?.text).toBe("고양이를 로 그려줘");
 
   const photo = bot.telegram.callsOf("sendPhoto")[0];
-  expect(photo?.other?.caption).toBe("그렸어요");
+  expect(photo?.other?.caption).toBeUndefined();
   expect(photo?.other?.reply_parameters?.message_id).toBe(msg.message_id);
+  const text = bot.telegram.callsOf("sendRichMessage")[0];
+  expect(text?.html).toBe("<p>그렸어요</p>");
+  expect(text?.other?.reply_parameters?.message_id).toBe(photo?.message.message_id);
+  expect(bot.repo.getCommandType(CHAT, text?.message.message_id as number)).toBe("image");
   const document = bot.telegram.callsOf("sendDocument")[0];
   expect(document?.other?.reply_parameters?.message_id).toBe(photo?.message.message_id);
 });
@@ -299,13 +303,13 @@ it("replying to the re-sent document continues the image conversation", async ()
 });
 
 it("replying to a later chunk emits the response parts only once", async () => {
-  const longCode = Array.from({ length: 400 }, (_, i) => `print(${i})`).join("\n");
+  const longCode = Array.from({ length: 5000 }, (_, i) => `print(${i})`).join("\n");
   const bot = createTestBot(
     createFakeGemini(textResponse(`\`\`\`python\n${longCode}\n\`\`\``), textResponse("후속")),
   );
   await bot.handlers.onMessage(userMsg({ text: "/gemini 코드" }));
 
-  const secondChunk = bot.telegram.callsOf("sendMessage")[1]?.message as Message;
+  const secondChunk = bot.telegram.callsOf("sendRichMessage")[1]?.message as Message;
   await bot.handlers.onMessage(
     userMsg({ text: "설명해줘", reply_to_message: secondChunk as never }),
   );
@@ -326,9 +330,10 @@ it("a 503 burst is retried until it succeeds, with no error message", async () =
   await done;
 
   expect(bot.gemini.requests).toHaveLength(4);
-  const sends = bot.telegram.callsOf("sendMessage");
+  expect(bot.telegram.callsOf("sendMessage")).toHaveLength(0);
+  const sends = bot.telegram.callsOf("sendRichMessage");
   expect(sends).toHaveLength(1);
-  expect(sends[0]?.text).toBe("복구됨");
+  expect(sends[0]?.html).toBe("<p>복구됨</p>");
 });
 
 it("503s that never clear stop at the attempt cap and answer with the overload copy", async () => {
@@ -428,15 +433,15 @@ it("a code-execution answer sends its code, its output, and its text in one mess
 
   await bot.handlers.onMessage(msg);
 
-  const sends = bot.telegram.callsOf("sendMessage");
+  const sends = bot.telegram.callsOf("sendRichMessage");
   expect(sends).toHaveLength(1);
-  expect(sends[0]?.text).toBe(
+  expect(sends[0]?.html).toBe(
     [
-      '<b>[코드 실행]</b>\n<pre><code class="language-python">print(2**10)</code></pre>',
-      "",
-      "<b>[실행 결과 ✅]</b>\n<pre><code>1024</code></pre>",
-      "",
-      "답은 <b>1024</b>입니다",
+      "<p><b>[코드 실행]</b></p>",
+      '<pre><code class="language-python">print(2**10)</code></pre>',
+      "<p><b>[실행 결과 ✅]</b></p>",
+      "<pre><code>1024</code></pre>",
+      "<p>답은 <b>1024</b>입니다</p>",
     ].join("\n"),
   );
   expect(sends[0]?.other?.reply_markup).toBeUndefined();
@@ -472,4 +477,29 @@ it("a response whose parts render nothing answers with the empty-response copy, 
     text: "🔄 재시도",
     callback_data: `retry_${msg.message_id}`,
   });
+});
+
+it("a model message without stored parts falls back to its rich message text", async () => {
+  const bot = createTestBot(createFakeGemini(textResponse("후속 답")));
+  const orphan = {
+    message_id: 777,
+    date: 1,
+    chat: { id: CHAT, type: "private", first_name: "chat" },
+    from: { id: BOT_ID, is_bot: true, first_name: "bot" },
+    rich_message: {
+      blocks: [
+        { type: "heading", text: "요약", size: 2 },
+        { type: "list", items: [{ label: "•", blocks: [{ type: "paragraph", text: "항목" }] }] },
+      ],
+    },
+  } as unknown as Message;
+
+  await bot.handlers.onMessage(
+    userMsg({ text: "/gemini 이어서", reply_to_message: orphan as never }),
+  );
+
+  expect(bot.gemini.requests[0]?.contents).toEqual([
+    { role: "model", parts: [{ text: "요약\n• 항목" }] },
+    { role: "user", parts: [{ text: "이어서" }] },
+  ]);
 });

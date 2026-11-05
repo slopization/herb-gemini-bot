@@ -80,19 +80,34 @@ implemented in `src/strings.ts` and nowhere else.
 
 ## Output
 
-- Everything is HTML parse_mode. Markdown converts including block elements:
-  headings → `<b>`, lists → `• `/`n. ` (nested indentation), fenced code →
-  `<pre><code class="language-…">`, blockquote, tables → `<pre>`, hr → `———`. All
-  untrusted text (model output, user echoes) is HTML-escaped exactly once.
-- Parts assembly: text + `[코드 실행]`/`[실행 결과 ✅|❌]`-labeled pre blocks + grounding
-  footer (`---` divider, `🔍 검색어: 'q1', 'q2'`, `📚 출처:` URI-deduped link list) +
-  token usage as the last footer line (`토큰: 입력 N / 출력 N / 생각 N / 합계 N`, from
-  usageMetadata; omitted when the response carries none).
-- Splitting: 4096 chars (1024 for a first chunk that becomes an image caption),
-  line-based, open tags closed at boundaries and reopened in the next chunk; overlong
-  single lines are force-cut outside tags and entities. The first chunk replies to the
-  user message; later chunks chain to the previous one.
-- Generated images: photo (one) / mediaGroup (several, caption on the first) plus an
+- AI replies are **rich messages** (`sendRichMessage`, rich HTML); system replies (/start,
+  /help, validation copy, error classes) stay plain or HTML parse_mode messages. Markdown
+  converts including block elements: headings → `<h1>`–`<h6>`, lists → `<ul>`/`<ol>`
+  (nested, `start` kept, task items get checkboxes; nesting past 6 levels continues as
+  `• ` lines), fenced code → `<pre><code class="language-…">`, blockquote (nesting past 3
+  levels merges), tables → bordered `<table>` with column alignment (wider than 20
+  columns → raw `<pre>`), hr → `<hr/>`. Math: `$…$`, `\(…\)` → `<tg-math>`; `$$…$$`,
+  `\[…\]`, ```` ```math ```` → `<tg-math-block>`; a `$` followed by a space, or closed by
+  a `$` that is preceded by a space or followed by a digit, is a currency amount, not math.
+  Soft line breaks become `<br/>` (bare newlines collapse in rich HTML). Inline
+  formatting past 5 levels keeps its text without the tags. Raw HTML from the model is
+  shown as text. All untrusted text (model output, user echoes) is HTML-escaped exactly
+  once.
+- Parts assembly: text + `[코드 실행]`/`[실행 결과 ✅|❌]`-labeled pre blocks + footer
+  (`<hr/>` divider, then one `<footer>` block: `🔍 검색어: 'q1', 'q2'`, `📚 출처:` with
+  URI-deduped `- link` lines, and token usage as the last section
+  (`토큰: 입력 N / 출력 N / 생각 N / 합계 N`, from usageMetadata; omitted when the
+  response carries none); sections separated by a blank line).
+- Splitting: at most 32768 UTF-8 bytes of HTML and 500 block tags (nested ones counted)
+  per message, line-based (each block, list item, and table row is its own line), open
+  tags closed at boundaries and reopened in the next chunk; overlong single lines are
+  force-cut outside tags, entities, and surrogate pairs. Telegram silently truncates rich
+  HTML past ~35000 bytes, which is why the budget is in bytes. The first chunk replies to
+  the user message (or to the first image); later chunks chain to the previous one.
+- History: a bot message without stored parts falls back to the plain text of its rich
+  message.
+- Generated images: photo (one) / mediaGroup (several), without a caption — the text
+  follows as rich messages replying to the first image — plus an
   **original-quality document re-send** (replying to the first response message;
   multiple images become one document mediaGroup named image.png / image_N.png). A
   failed document re-send does not affect the main reply.

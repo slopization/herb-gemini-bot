@@ -2,6 +2,7 @@ import type { Part } from "@google/genai";
 import type { Message } from "grammy/types";
 import type { Repo } from "../db/repo.ts";
 import { extractAttachments } from "../db/repo.ts";
+import { richMessageText } from "../render/rich-text.ts";
 
 export interface TurnFile {
   fileId: string;
@@ -71,7 +72,8 @@ function mergeFiles(target: Turn, extra: readonly TurnFile[]): void {
 function toTurn(repo: Repo, msg: Message, botId: number): Turn {
   // identity, not is_bot: anonymous admins and other bots are still user turns
   const role = msg.from?.id === botId ? "model" : "user";
-  const text = msg.text ?? msg.caption ?? "";
+  const text =
+    msg.text ?? msg.caption ?? (msg.rich_message ? richMessageText(msg.rich_message) : "");
   const files = collectFiles(repo, msg);
 
   if (role === "model") {

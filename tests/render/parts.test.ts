@@ -14,13 +14,12 @@ it("renders text, executable code, and results in order with labels", () => {
 
   expect(html).toBe(
     [
-      "계산해볼게요.",
-      "",
-      '<b>[코드 실행]</b>\n<pre><code class="language-python">print(1 &lt; 2)</code></pre>',
-      "",
-      "<b>[실행 결과 ✅]</b>\n<pre><code>True</code></pre>",
-      "",
-      "결과는 <b>참</b>입니다.",
+      "<p>계산해볼게요.</p>",
+      "<p><b>[코드 실행]</b></p>",
+      '<pre><code class="language-python">print(1 &lt; 2)</code></pre>',
+      "<p><b>[실행 결과 ✅]</b></p>",
+      "<pre><code>True</code></pre>",
+      "<p>결과는 <b>참</b>입니다.</p>",
     ].join("\n"),
   );
 });
@@ -47,21 +46,20 @@ it("the grounding footer lists queries and URI-deduped sources", () => {
 
   expect(html).toBe(
     [
-      "본문",
-      "",
-      "---",
-      "🔍 <b>검색어</b>: '금리 인상', '한국은행'",
-      "",
-      "📚 <b>출처</b>:",
-      ' - <a href="https://a.example">기사 A</a>',
-      ' - <a href="https://b.example">B &amp; C</a>',
+      "<p>본문</p>",
+      "<hr/>",
+      "<footer>🔍 <b>검색어</b>: '금리 인상', '한국은행'<br/>",
+      "<br/>",
+      "📚 <b>출처</b>:<br/>",
+      '- <a href="https://a.example">기사 A</a><br/>',
+      '- <a href="https://b.example">B &amp; C</a></footer>',
     ].join("\n"),
   );
 });
 
 it("consecutive text parts are joined into one markdown render", () => {
   const html = renderResponseHtml({ parts: [{ text: "이어지는 **문" }, { text: "장**입니다" }] });
-  expect(html).toBe("이어지는 <b>문장</b>입니다");
+  expect(html).toBe("<p>이어지는 <b>문장</b>입니다</p>");
 });
 
 it("token usage closes the footer after grounding", () => {
@@ -78,12 +76,11 @@ it("token usage closes the footer after grounding", () => {
 
   expect(html).toBe(
     [
-      "본문",
-      "",
-      "---",
-      "🔍 <b>검색어</b>: 'q'",
-      "",
-      "<b>토큰</b>: 입력 1,234 / 출력 56 / 생각 789 / 합계 2,079",
+      "<p>본문</p>",
+      "<hr/>",
+      "<footer>🔍 <b>검색어</b>: 'q'<br/>",
+      "<br/>",
+      "<b>토큰</b>: 입력 1,234 / 출력 56 / 생각 789 / 합계 2,079</footer>",
     ].join("\n"),
   );
 });
@@ -93,7 +90,9 @@ it("token usage alone still gets the divider", () => {
     parts: [{ text: "본문" }],
     usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
   });
-  expect(html).toBe("본문\n\n---\n\n<b>토큰</b>: 입력 10 / 출력 5 / 생각 0 / 합계 15");
+  expect(html).toBe(
+    "<p>본문</p>\n<hr/>\n<footer><b>토큰</b>: 입력 10 / 출력 5 / 생각 0 / 합계 15</footer>",
+  );
 });
 
 it("a footer with nothing to annotate renders as empty", () => {
@@ -105,10 +104,10 @@ it("a footer with nothing to annotate renders as empty", () => {
   expect(html).toBe("");
 });
 
-it("an image-only response keeps the footer as its caption", () => {
+it("an image-only response still renders its footer", () => {
   const html = renderResponseHtml({
     parts: [{ inlineData: { mimeType: "image/png", data: "cG5n" } }],
     usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
   });
-  expect(html).toBe("---\n\n<b>토큰</b>: 입력 10 / 출력 5 / 생각 0 / 합계 15");
+  expect(html).toBe("<hr/>\n<footer><b>토큰</b>: 입력 10 / 출력 5 / 생각 0 / 합계 15</footer>");
 });
