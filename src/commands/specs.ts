@@ -34,6 +34,9 @@ export interface AiCommandSpec extends CommandMeta {
 
 const THINKING_BUDGET = 32768;
 
+export const CHAT_PROMPT =
+  "You are replying in a Telegram chat. Keep answers concise and to the point: match the length to the question, skip preambles, recaps and filler, and go long only when the user asks for depth.";
+
 const start: CommandMeta = {
   name: "start",
   aliases: [],
@@ -57,6 +60,7 @@ const gemini: AiCommandSpec = {
   modelKey: "pro",
   tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }],
   thinkingBudget: THINKING_BUDGET,
+  systemInstruction: CHAT_PROMPT,
 };
 
 const image: AiCommandSpec = {
@@ -91,6 +95,7 @@ const map: AiCommandSpec = {
   modelKey: "pro",
   tools: [{ googleSearch: {} }, { googleMaps: {} }, { urlContext: {} }],
   thinkingBudget: THINKING_BUDGET,
+  systemInstruction: CHAT_PROMPT,
 };
 
 const summarize: AiCommandSpec = {

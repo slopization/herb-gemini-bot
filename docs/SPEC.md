@@ -10,9 +10,9 @@ implemented in `src/strings.ts` and nowhere else.
 |---|---|---|---|
 | /start | - | ✕ | Greeting + list of menu commands (no AI call) |
 | /help [cmd] | - | ○ | Listing / detail (description, aliases, params) / unknown-command notice |
-| /gemini | g | ○ | pro model. Tools: googleSearch + codeExecution + urlContext, thinkingBudget 32768 |
+| /gemini | g | ○ | pro model. Chat system prompt (`CHAT_PROMPT` in `src/commands/specs.ts`: one line asking for concise, chat-sized answers). Tools: googleSearch + codeExecution + urlContext, thinkingBudget 32768 |
 | /image [1k\|2k\|4k] | img | ○ | image model. Tools: googleSearch. imageSize sent uppercase (1K/2K/4K), default 1k. functionCall/Response parts are dropped from replayed history |
-| /map | - | ○ | pro model. Tools: googleSearch + googleMaps + urlContext, thinkingBudget 32768 |
+| /map | - | ○ | pro model. Chat system prompt (same as /gemini). Tools: googleSearch + googleMaps + urlContext, thinkingBudget 32768 |
 | /summarize | - | ○ | pro model. GeekNews system prompt (`src/commands/summarize-prompt.ts`, verbatim), temperature 0, tools: googleSearch + urlContext + codeExecution, thinkingBudget 32768 |
 
 - `/cmd@BotUsername` works, commands work in captions, matching is case-insensitive
@@ -43,9 +43,9 @@ implemented in `src/strings.ts` and nowhere else.
   **replying to any of them continues that conversation identically**.
 - **Implicit continuation**: a command-less reply to a bot response re-runs that
   response's command_type. `summarize → gemini` remap (the summary prompt and
-  temperature 0 do not apply to follow-ups). Replies to `error` messages and to
-  meta-less bot messages (/start and /help output) do nothing. Any other command-less
-  text gets no response, DMs included.
+  temperature 0 do not apply to follow-ups; the chat system prompt does). Replies to
+  `error` messages and to meta-less bot messages (/start and /help output) do nothing.
+  Any other command-less text gets no response, DMs included.
 - **validate** (explicit commands only; implicit always passes): when there is neither
   media nor text —
   replying to a bot response: "봇의 응답이나 다른 명령어에는 내용을 입력하여 답장해야 합니다." /

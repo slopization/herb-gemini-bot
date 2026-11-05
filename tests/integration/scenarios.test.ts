@@ -1,6 +1,7 @@
 import { Language, Outcome } from "@google/genai";
 import type { Message } from "grammy/types";
 import { afterEach, expect, it, vi } from "vitest";
+import { CHAT_PROMPT } from "../../src/commands/specs.ts";
 import {
   apiError,
   blockedResponse,
@@ -188,7 +189,7 @@ it("scenario 6: replying to a summary continues as plain gemini", async () => {
   );
 
   const followConfig = bot.gemini.requests[1]?.config as Record<string, unknown>;
-  expect(followConfig.systemInstruction).toBeUndefined(); // summarize remapped to gemini
+  expect(followConfig.systemInstruction).toBe(CHAT_PROMPT); // summarize remapped to gemini
   expect(followConfig.temperature).toBeUndefined();
   expect(followConfig.tools).toEqual([
     { googleSearch: {} },

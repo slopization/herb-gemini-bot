@@ -11,3 +11,4 @@ data/
 .vscode/
 *.iml
 CLAUDE.md
+.DS_Store
