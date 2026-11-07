@@ -58,6 +58,55 @@ it("queries and URI-deduped sources sit behind their own toggle", () => {
   );
 });
 
+it("sources sharing a host collapse onto one line of numbered links", () => {
+  const html = renderResponseHtml({
+    parts: [{ text: "본문" }],
+    groundingMetadata: {
+      groundingChunks: [
+        { web: { uri: "https://r.example/1?a=1&b=2", title: "github.com" } },
+        { web: { uri: "https://r.example/2", title: "example.org" } },
+        { web: { uri: "https://r.example/3", title: "github.com" } },
+        { web: { uri: "https://r.example/1?a=1&b=2", title: "github.com" } },
+        { web: { uri: "https://r.example/4", title: "github.com" } },
+      ],
+    },
+  });
+
+  expect(html).toBe(
+    [
+      "<p>본문</p>",
+      "<hr/>",
+      "<details><summary>출처 보기</summary>",
+      "<p>📚 <b>출처</b>:<br/>",
+      '- github.com <a href="https://r.example/1?a=1&amp;b=2">1</a> <a href="https://r.example/3">2</a> <a href="https://r.example/4">3</a><br/>',
+      '- <a href="https://r.example/2">example.org</a></p>',
+      "</details>",
+    ].join("\n"),
+  );
+});
+
+it("a source with an unlinkable uri loses its link, not its host", () => {
+  const html = renderResponseHtml({
+    parts: [{ text: "본문" }],
+    groundingMetadata: {
+      groundingChunks: [
+        { web: { uri: "ftp://r.example/1", title: "a.example" } },
+        { web: { uri: "ftp://r.example/2", title: "b.example" } },
+        { web: { uri: "https://r.example/3", title: "b.example" } },
+        { web: { uri: "ftp://r.example/4", title: "c.example" } },
+        { web: { uri: "https://r.example/5", title: "c.example" } },
+        { web: { uri: "https://r.example/6", title: "c.example" } },
+      ],
+    },
+  });
+
+  expect(html).toContain("- a.example<br/>");
+  expect(html).toContain('- <a href="https://r.example/3">b.example</a><br/>');
+  expect(html).toContain(
+    '- c.example <a href="https://r.example/5">1</a> <a href="https://r.example/6">2</a></p>',
+  );
+});
+
 it("consecutive text parts are joined into one markdown render", () => {
   const html = renderResponseHtml({ parts: [{ text: "이어지는 **문" }, { text: "장**입니다" }] });
   expect(html).toBe("<p>이어지는 <b>문장</b>입니다</p>");

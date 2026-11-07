@@ -165,3 +165,20 @@ it("each toggle reopens with its own summary, and an emptied one goes without it
   const kept = `${TOGGLE}\n<p>본문</p>\n</details>`;
   expect(splitRichHtml(`${kept}\n${SOURCES}\n</details>`)).toEqual([kept]);
 });
+
+it("a host line of numbered links cuts outside its anchors' tags", () => {
+  const href = `https://r.example/${"x".repeat(200)}`;
+  const anchors = Array.from({ length: 400 }, () => `<a href="${href}">1</a>`).join(" ");
+  const html = `${SOURCES}\n<p>📚 <b>출처</b>:<br/>\n- github.com ${anchors}</p>\n</details>`;
+
+  const chunks = splitRichHtml(html);
+
+  expect(chunks.length).toBeGreaterThan(1);
+  for (const chunk of chunks) {
+    expect(bytes(chunk)).toBeLessThanOrEqual(MAX_BYTES);
+    expect(chunk).toMatch(/^<details><summary>출처 보기<\/summary>/);
+    expect(chunk).toMatch(/<\/details>$/);
+  }
+  const whole = chunks.flatMap((chunk) => chunk.match(/<a href="[^"]+">1<\/a>/g) ?? []);
+  expect(whole).toHaveLength(400);
+});

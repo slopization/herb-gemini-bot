@@ -96,21 +96,18 @@ function renderGrounding(grounding: GroundingMetadata | undefined): string[] {
     sections.push(strings.render.searchQueries(joined));
   }
 
-  const sources = new Map<string, string>();
+  // every uri is a Google redirect, so the title is the only host a chunk carries
+  const hosts = new Map<string, Set<string>>();
   for (const chunk of grounding.groundingChunks ?? []) {
-    if (chunk.web?.uri && chunk.web.title) sources.set(chunk.web.uri, chunk.web.title);
+    if (!chunk.web?.uri || !chunk.web.title) continue;
+    const uris = hosts.get(chunk.web.title) ?? new Set<string>();
+    hosts.set(chunk.web.title, uris.add(chunk.web.uri));
   }
-  if (sources.size > 0) {
-    const lines: string[] = [strings.render.sourcesHeader];
-    for (const [uri, title] of sources) {
-      const href = safeHref(uri);
-      lines.push(
-        strings.render.sourceLine(
-          href ? `<a href="${escapeAttribute(href)}">${escapeHtml(title)}</a>` : escapeHtml(title),
-        ),
-      );
-    }
-    sections.push(lines.join(BR));
+  if (hosts.size > 0) {
+    const lines = [...hosts].map(([host, uris]) =>
+      strings.render.sourceLine(renderSource(host, uris)),
+    );
+    sections.push([strings.render.sourcesHeader, ...lines].join(BR));
   }
 
   if (sections.length === 0) return [];
@@ -118,4 +115,14 @@ function renderGrounding(grounding: GroundingMetadata | undefined): string[] {
     strings.render.sourcesSummary,
     sections.map((section) => `<p>${section}</p>`),
   );
+}
+
+function renderSource(host: string, uris: Set<string>): string {
+  const anchor = (href: string, label: string): string =>
+    `<a href="${escapeAttribute(href)}">${label}</a>`;
+  const name = escapeHtml(host);
+  const [first, ...rest] = [...uris].flatMap((uri) => safeHref(uri) ?? []);
+  if (first === undefined) return name;
+  if (rest.length === 0) return anchor(first, name);
+  return [name, ...[first, ...rest].map((href, i) => anchor(href, String(i + 1)))].join(" ");
 }

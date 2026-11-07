@@ -102,10 +102,12 @@ implemented in `src/strings.ts` and nowhere else.
   format.
 - Parts assembly: text + `[코드 실행]`/`[실행 결과 ✅|❌]`-labeled pre blocks + closing
   blocks: an `<hr/>` divider, then `<details><summary>출처 보기</summary>` holding one
-  paragraph each for `🔍 검색어: 'q1', 'q2'` and `📚 출처:` with URI-deduped `- link` lines
-  (omitted when the response carries neither), then one always-visible `<footer>` block
-  with `토큰: 입력 N / 출력 N / 생각 N / 합계 N` (from usageMetadata; omitted when the
-  response carries none). This applies with or without the `모두 보기` toggle.
+  paragraph each for `🔍 검색어: 'q1', 'q2'` and `📚 출처:` with one `- ` line per host
+  (the chunk title, in first-seen order; URIs deduped) — a host with one URI links its name
+  (`- example.org`), a host with several keeps its name plain and links numbers after it
+  (`- github.com 1 2 3`) — omitted when the response carries neither, then one always-visible
+  `<footer>` block with `토큰: 입력 N / 출력 N / 생각 N / 합계 N` (from usageMetadata; omitted
+  when the response carries none). This applies with or without the `모두 보기` toggle.
 - Splitting: at most 32768 UTF-8 bytes of HTML and 500 block tags (nested ones counted)
   per message, line-based (each block, list item, and table row is its own line), open
   tags closed at boundaries and reopened in the next chunk; overlong single lines are
