@@ -139,3 +139,21 @@ it("inline formatting past the depth cap keeps its text without the tags", () =>
 it("escapeHtml replaces only &, <, and >", () => {
   expect(escapeHtml('<a href="x">&</a>')).toBe('&lt;a href="x"&gt;&amp;&lt;/a&gt;');
 });
+
+it("emphasis closes after punctuation when a CJK particle follows", () => {
+  expect(markdownToRichHtml("총 **$O(E \\log E)$**가 소요됩니다.")).toBe(
+    "<p>총 <b><tg-math>O(E \\log E)</tg-math></b>가 소요됩니다.</p>",
+  );
+  expect(markdownToRichHtml("**굵게(괄호)**입니다 *기울(임)*이")).toBe(
+    "<p><b>굵게(괄호)</b>입니다 <i>기울(임)</i>이</p>",
+  );
+  expect(markdownToRichHtml("좋아요**👍**입니다")).toBe("<p>좋아요<b>👍</b>입니다</p>");
+});
+
+it("emphasis opens before punctuation when a CJK character precedes", () => {
+  expect(markdownToRichHtml('이것은**"인용"**입니다')).toBe('<p>이것은<b>"인용"</b>입니다</p>');
+});
+
+it("non-CJK flanking rules are unchanged", () => {
+  expect(markdownToRichHtml("**foo(bar)**baz")).toBe("<p>**foo(bar)**baz</p>");
+});

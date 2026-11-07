@@ -1,5 +1,5 @@
 import type { Token, TokenizerExtension, Tokens } from "marked";
-import { Marked } from "marked";
+import { Marked, Tokenizer } from "marked";
 
 // Untrusted text (model output, user echoes) passes through this escape exactly once.
 export function escapeHtml(text: string): string {
@@ -81,8 +81,25 @@ function mathExtension(level: "block" | "inline", rules: RegExp[]): TokenizerExt
   };
 }
 
+const CJK = String.raw`\p{sc=Hangul}\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}`;
+// CJK text attaches particles and punctuation to `**` without spaces, so CommonMark's
+// flanking rules reject `**O(n)**이` and `은**"인용"**`. A CJK neighbour lifts the rule.
+const PUNCT_BEFORE_CJK_CLOSER = new RegExp(String.raw`(?!\*)[\p{P}\p{S}](?=\*+[${CJK}])`, "gu");
+const CJK_CHAR = new RegExp(`^[${CJK}]$`, "u");
+
 const markdown = new Marked({
   extensions: [mathExtension("block", BLOCK_MATH), mathExtension("inline", INLINE_MATH)],
+  hooks: {
+    // The masked copy is only scanned for closing delimiters, so a same-length letter in place
+    // of the punctuation makes the run closable without changing the emitted text.
+    emStrongMask: (src) => src.replace(PUNCT_BEFORE_CJK_CLOSER, (p) => "a".repeat(p.length)),
+  },
+  tokenizer: {
+    emStrong(src, maskedSrc, prevChar) {
+      if (!src.startsWith("*") || !CJK_CHAR.test(prevChar ?? "")) return false;
+      return Tokenizer.prototype.emStrong.call(this, src, maskedSrc, "");
+    },
+  },
 });
 
 interface Depth {
