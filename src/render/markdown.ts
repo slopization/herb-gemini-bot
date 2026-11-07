@@ -36,7 +36,8 @@ export function safeHref(href: string): string | undefined {
 export const BR = "<br/>\n";
 
 // Telegram rejects a message nested deeper than 16 levels (blocks and inline formatting
-// together); these caps keep the worst case at quote 3 + list 6 + paragraph 1 + inline 5.
+// together); these caps keep the worst case at details 1 + quote 3 + list 6 + paragraph 1 +
+// inline 5.
 const MAX_QUOTE_DEPTH = 3;
 const MAX_LIST_DEPTH = 6;
 const MAX_INLINE_DEPTH = 5;

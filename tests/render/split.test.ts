@@ -89,3 +89,57 @@ it("force-cutting never splits an HTML entity or a surrogate pair", () => {
   }
   expect(chunks.join("")).toBe(html);
 });
+
+const TOGGLE = "<details><summary>모두 보기</summary>";
+
+it("a toggle cut across chunks reopens with its summary in every chunk", () => {
+  const lines = Array.from({ length: 20 }, () => `<p>${"가".repeat(2000)}</p>`).join("\n");
+  const chunks = splitRichHtml(
+    `<p>요약</p>\n${TOGGLE}\n${lines}\n</details>\n<hr/>\n<footer>끝</footer>`,
+  );
+
+  expect(chunks.length).toBeGreaterThan(1);
+  expect(chunks[0]).toMatch(/^<p>요약<\/p>\n<details><summary>모두 보기<\/summary>\n<p>가/);
+  for (const chunk of chunks) {
+    expect(bytes(chunk)).toBeLessThanOrEqual(MAX_BYTES);
+    expect(chunk.match(/<details><summary>모두 보기<\/summary>/g)).toHaveLength(1);
+    expect(chunk.match(/<\/details>/g)).toHaveLength(1);
+  }
+  expect(chunks.at(-1)).toMatch(/<\/details>\n<hr\/>\n<footer>끝<\/footer>$/);
+});
+
+it("a toggle counts against the block budget, as does its reopening", () => {
+  const items = Array.from({ length: 1200 }, (_, i) => `<p>${i}</p>`).join("\n");
+  const chunks = splitRichHtml(`${TOGGLE}\n${items}\n</details>`);
+
+  expect(chunks).toHaveLength(3);
+  for (const chunk of chunks) {
+    const blocks = chunk.match(/<(?:p|details)>/g) ?? [];
+    expect(blocks.length).toBeLessThanOrEqual(MAX_BLOCKS);
+  }
+});
+
+it("a body too long to share a chunk with the lead never leaves an empty toggle behind", () => {
+  const body = `<p>${"가".repeat(30000)}</p>`;
+  const chunks = splitRichHtml(`<p>요약</p>\n${TOGGLE}\n${body}\n</details>`);
+
+  expect(chunks[0]).toBe("<p>요약</p>");
+  for (const chunk of chunks.slice(1))
+    expect(chunk).toMatch(/^<details><summary>모두 보기<\/summary><p>가/);
+});
+
+it("closing tags spilling over the budget never open a toggle with nothing inside", () => {
+  for (let pad = 0; pad < 80; pad++) {
+    const item = "x".repeat(MAX_BYTES - 120 + pad);
+    const html = `${TOGGLE}\n<ul>\n<li>${item}</li>\n</ul>\n</details>\n<hr/>\n<footer>끝</footer>`;
+
+    for (const chunk of splitRichHtml(html)) {
+      expect(chunk).not.toMatch(/<\/summary>(?:<[^>]*>|\s)*<\/details>/);
+    }
+  }
+});
+
+it("a toggle whose only text is its summary is dropped", () => {
+  expect(splitRichHtml(`${TOGGLE}\n</details>`)).toEqual([]);
+  expect(splitRichHtml(`${TOGGLE}\n<hr/>\n</details>\n<p>끝</p>`)).toEqual(["<p>끝</p>"]);
+});

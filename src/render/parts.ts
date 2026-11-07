@@ -9,6 +9,9 @@ import {
   safeHref,
 } from "./markdown.ts";
 
+/** The model's fold point: its text before this stays visible, the rest goes behind a toggle. */
+export const DETAILS_MARKER = "[[DETAILS]]";
+
 export interface RenderInput {
   parts: Part[];
   groundingMetadata?: GroundingMetadata;
@@ -18,9 +21,13 @@ export interface RenderInput {
 /** Gemini response parts + grounding metadata → one Telegram rich HTML document. */
 export function renderResponseHtml(input: RenderInput): string {
   const segments: string[] = [];
+  let lead = "";
   let mdBuffer = "";
   const flush = (): void => {
-    if (mdBuffer.trim() !== "") segments.push(markdownToRichHtml(mdBuffer));
+    const pieces = mdBuffer.split(DETAILS_MARKER);
+    if (pieces.length > 1 && lead === "") lead = pieces.shift() ?? "";
+    const markdown = pieces.join("");
+    if (markdown.trim() !== "") segments.push(markdownToRichHtml(markdown));
     mdBuffer = "";
   };
 
@@ -41,17 +48,31 @@ export function renderResponseHtml(input: RenderInput): string {
     }
   }
   flush();
+  const content = foldBehindLead(lead, segments);
   // "" is what the pipeline reads as an empty response, so a footer never stands in for content
   const hasImage = input.parts.some((part) => part.inlineData?.mimeType?.startsWith("image/"));
-  if (segments.length === 0 && !hasImage) return "";
+  if (content.length === 0 && !hasImage) return "";
 
   const footer = [
     ...renderGroundingFooter(input.groundingMetadata),
     ...renderTokenUsage(input.usageMetadata),
   ];
   // the divider belongs to the footer as a whole, not to any single section of it
-  if (footer.length > 0) segments.push(`<hr/>\n<footer>${footer.join(BR + BR)}</footer>`);
-  return segments.join("\n");
+  if (footer.length > 0) content.push(`<hr/>\n<footer>${footer.join(BR + BR)}</footer>`);
+  return content.join("\n");
+}
+
+/** Body parts the model ran before writing its lead fold too, so the lead always comes first. */
+function foldBehindLead(lead: string, body: string[]): string[] {
+  if (lead.trim() === "") return body;
+  const visible = markdownToRichHtml(lead);
+  if (body.length === 0) return [visible];
+  return [
+    visible,
+    `<details><summary>${strings.render.detailsSummary}</summary>`,
+    ...body,
+    "</details>",
+  ];
 }
 
 function renderTokenUsage(usage: GenerateContentResponseUsageMetadata | undefined): string[] {

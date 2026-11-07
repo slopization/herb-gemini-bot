@@ -10,10 +10,10 @@ implemented in `src/strings.ts` and nowhere else.
 |---|---|---|---|
 | /start | - | ✕ | Greeting + list of menu commands (no AI call) |
 | /help [cmd] | - | ○ | Listing / detail (description, aliases, params) / unknown-command notice |
-| /gemini | g | ○ | pro model. Chat system prompt (`CHAT_PROMPT` in `src/commands/specs.ts`: one line asking for concise, chat-sized answers). Tools: googleSearch + codeExecution + urlContext, thinkingBudget 32768 |
+| /gemini | g | ○ | pro model. Chat system prompt (`CHAT_PROMPT` in `src/commands/specs.ts`: a 1–3 sentence opening, then the full text after `[[DETAILS]]` — see Folding under Output). Tools: googleSearch + codeExecution + urlContext, thinkingBudget 32768 |
 | /image [1k\|2k\|4k] | img | ○ | image model. Tools: googleSearch. imageSize sent uppercase (1K/2K/4K), default 1k. functionCall/Response parts are dropped from replayed history |
 | /map | - | ○ | pro model. Chat system prompt (same as /gemini). Tools: googleSearch + googleMaps + urlContext, thinkingBudget 32768 |
-| /summarize | - | ○ | pro model. GeekNews system prompt (`src/commands/summarize-prompt.ts`, verbatim), temperature 0, tools: googleSearch + urlContext + codeExecution, thinkingBudget 32768 |
+| /summarize | - | ○ | pro model. GeekNews system prompt (`src/commands/summarize-prompt.ts`, verbatim) plus a rule placing `[[DETAILS]]` after the introduction, temperature 0, tools: googleSearch + urlContext + codeExecution, thinkingBudget 32768 |
 
 - `/cmd@BotUsername` works, commands work in captions, matching is case-insensitive
   and longest-first. Commands addressed to other bots are ignored.
@@ -93,6 +93,13 @@ implemented in `src/strings.ts` and nowhere else.
   formatting past 5 levels keeps its text without the tags. Raw HTML from the model is
   shown as text. All untrusted text (model output, user echoes) is HTML-escaped exactly
   once.
+- Folding: the system prompt (/gemini, /map, /summarize) has the model open with a 1–3
+  sentence answer and write `[[DETAILS]]` on its own line before the full text — one
+  request, no second model call. The text before the first marker stays visible; every
+  other part, code execution included, goes into `<details><summary>모두 보기</summary>`.
+  The footer stays outside the toggle. No marker, nothing before it, or nothing after it
+  → no toggle. Stored model parts keep the marker, so history shows the model its own
+  format.
 - Parts assembly: text + `[코드 실행]`/`[실행 결과 ✅|❌]`-labeled pre blocks + footer
   (`<hr/>` divider, then one `<footer>` block: `🔍 검색어: 'q1', 'q2'`, `📚 출처:` with
   URI-deduped `- link` lines, and token usage as the last section
@@ -102,8 +109,10 @@ implemented in `src/strings.ts` and nowhere else.
   per message, line-based (each block, list item, and table row is its own line), open
   tags closed at boundaries and reopened in the next chunk; overlong single lines are
   force-cut outside tags, entities, and surrogate pairs. Telegram silently truncates rich
-  HTML past ~35000 bytes, which is why the budget is in bytes. The first chunk replies to
-  the user message (or to the first image); later chunks chain to the previous one.
+  HTML past ~35000 bytes, which is why the budget is in bytes. A toggle cut across chunks
+  reopens with its summary, and one left empty by a cut is dropped. The first chunk
+  replies to the user message (or to the first image); later chunks chain to the
+  previous one.
 - History: a bot message without stored parts falls back to the plain text of its rich
   message.
 - Generated images: photo (one) / mediaGroup (several), without a caption — the text

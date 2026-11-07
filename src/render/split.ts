@@ -21,6 +21,7 @@ const BLOCK_TAGS = new Set([
   "h6",
   "pre",
   "blockquote",
+  "details",
   "ul",
   "ol",
   "li",
@@ -30,6 +31,9 @@ const BLOCK_TAGS = new Set([
   "footer",
   "tg-math-block",
 ]);
+// A details block is invalid without its summary, so reopening one has to repeat it.
+const SUMMARY_RE = /^<summary>.*?<\/summary>/;
+const DETAILS_RE = /\n?<details><summary>.*?<\/summary>([\s\S]*?)<\/details>/g;
 
 /**
  * Split finished rich HTML into sendable chunks: line-based accumulation, closing open
@@ -171,9 +175,17 @@ function findCut(
   return best > from ? best : undefined;
 }
 
-/** Telegram rejects a message with no visible characters, so tag-only chunks are dropped. */
+/**
+ * Telegram rejects a message with no visible characters, so tag-only chunks are dropped.
+ * A cut next to a toggle's edge can leave it empty; its summary alone is not content.
+ */
 function emit(out: string[], chunk: string): void {
-  if (chunk.replace(TAG_RE, "").trim() !== "") out.push(chunk);
+  const kept = chunk.replace(DETAILS_RE, (block, body: string) => (hasText(body) ? block : ""));
+  if (hasText(kept)) out.push(kept.trim());
+}
+
+function hasText(html: string): boolean {
+  return html.replace(TAG_RE, "").trim() !== "";
 }
 
 function scanTags(fragment: string, stack: OpenTag[]): void {
@@ -191,7 +203,10 @@ function scanTags(fragment: string, stack: OpenTag[]): void {
         }
       }
     } else if (!selfClosing) {
-      stack.push({ name, open: match[0] });
+      const rest = name === "details" ? fragment.slice(TAG_RE.lastIndex) : "";
+      const summary = SUMMARY_RE.exec(rest)?.[0] ?? "";
+      stack.push({ name, open: match[0] + summary });
+      TAG_RE.lastIndex += summary.length;
     }
     match = TAG_RE.exec(fragment);
   }

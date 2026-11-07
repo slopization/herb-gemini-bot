@@ -49,6 +49,7 @@ export const strings = {
   },
 
   render: {
+    detailsSummary: "모두 보기",
     codeExecutionLabel: "<b>[코드 실행]</b>",
     executionResultLabel: (ok: boolean) => `<b>[실행 결과 ${ok ? "✅" : "❌"}]</b>`,
     searchQueries: (quotedJoined: string) => `🔍 <b>검색어</b>: ${quotedJoined}`,

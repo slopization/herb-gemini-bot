@@ -1,5 +1,6 @@
 import type { GenerateContentConfig, Part, Tool } from "@google/genai";
 import type { Config } from "../config.ts";
+import { DETAILS_MARKER } from "../render/parts.ts";
 import { SUMMARIZE_PROMPT } from "./summarize-prompt.ts";
 
 export interface ParamSpec {
@@ -34,8 +35,16 @@ export interface AiCommandSpec extends CommandMeta {
 
 const THINKING_BUDGET = 32768;
 
-export const CHAT_PROMPT =
-  "You are replying in a Telegram chat. Keep answers concise and to the point: match the length to the question, skip preambles, recaps and filler, and go long only when the user asks for depth.";
+export const CHAT_PROMPT = `You are replying in a Telegram chat, where only the start of a reply is visible and the rest stays folded until the reader taps to expand it. Skip preambles, recaps and filler.
+
+Structure every reply like this:
+1. Open with the answer itself in 1-3 short sentences. It has to stand on its own: state the conclusion, never an introduction to what follows.
+2. If there is more worth saying, write ${DETAILS_MARKER} on its own line, then the full answer: reasoning, examples, code, tables, caveats. Match its length to the question, and do not repeat the opening.
+
+If 1-3 sentences cover it, stop there and leave the marker out. When you run code, write the opening only after its result, so it states the outcome. Use the marker once, and never mention it or this structure.`;
+
+const SUMMARIZE_FOLD_RULE = `# Folding
+In Telegram only the start of the report is visible; the rest stays folded until the reader taps to expand it. Write ${DETAILS_MARKER} on its own line right after the Introduction, then continue with the Key Points. Use the marker once, and never mention it.`;
 
 const start: CommandMeta = {
   name: "start",
@@ -107,7 +116,7 @@ const summarize: AiCommandSpec = {
   modelKey: "pro",
   tools: [{ googleSearch: {} }, { urlContext: {} }, { codeExecution: {} }],
   thinkingBudget: THINKING_BUDGET,
-  systemInstruction: SUMMARIZE_PROMPT,
+  systemInstruction: `${SUMMARIZE_PROMPT}\n\n${SUMMARIZE_FOLD_RULE}`,
   temperature: 0,
 };
 

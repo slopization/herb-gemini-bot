@@ -2,6 +2,7 @@ import { Language, Outcome } from "@google/genai";
 import type { Message } from "grammy/types";
 import { afterEach, expect, it, vi } from "vitest";
 import { CHAT_PROMPT } from "../../src/commands/specs.ts";
+import { DETAILS_MARKER } from "../../src/render/parts.ts";
 import {
   apiError,
   BOT_ID,
@@ -502,4 +503,60 @@ it("a model message without stored parts falls back to its rich message text", a
     { role: "model", parts: [{ text: "요약\n• 항목" }] },
     { role: "user", parts: [{ text: "이어서" }] },
   ]);
+});
+
+it("a marked reply folds its full text behind a toggle from a single model call", async () => {
+  const reply = `짧은 답입니다.\n\n${DETAILS_MARKER}\n\n긴 설명입니다.`;
+  const bot = createTestBot(createFakeGemini(textResponse(reply), textResponse("이어진 답변")));
+  await bot.handlers.onMessage(userMsg({ text: "/gemini 질문" }));
+
+  expect(bot.gemini.requests).toHaveLength(1);
+  const config = bot.gemini.requests[0]?.config as Record<string, unknown>;
+  expect(config.systemInstruction).toContain(DETAILS_MARKER);
+
+  const sends = bot.telegram.callsOf("sendRichMessage");
+  expect(sends).toHaveLength(1);
+  expect(sends[0]?.html).toBe(
+    [
+      "<p>짧은 답입니다.</p>",
+      "<details><summary>모두 보기</summary>",
+      "<p>긴 설명입니다.</p>",
+      "</details>",
+    ].join("\n"),
+  );
+
+  // history replays the model's own format
+  const botMessage = sends[0]?.message as Message;
+  await bot.handlers.onMessage(userMsg({ text: "더", reply_to_message: botMessage as never }));
+  expect(bot.gemini.requests[1]?.contents).toEqual([
+    { role: "user", parts: [{ text: "질문" }] },
+    { role: "model", parts: [{ text: reply }] },
+    { role: "user", parts: [{ text: "더" }] },
+  ]);
+});
+
+it("a folded reply too long for one message keeps its toggle across the chain", async () => {
+  const body = Array.from({ length: 12 }, (_, i) => `${i}${"가".repeat(4000)}`).join("\n\n");
+  const bot = createTestBot(
+    createFakeGemini(textResponse(`요약입니다.\n${DETAILS_MARKER}\n${body}`)),
+  );
+  const msg = userMsg({ text: "/gemini 길게" });
+  await bot.handlers.onMessage(msg);
+
+  const sends = bot.telegram.callsOf("sendRichMessage");
+  expect(sends.length).toBeGreaterThan(1);
+  expect(sends[0]?.html).toMatch(/^<p>요약입니다\.<\/p>\n<details><summary>모두 보기<\/summary>/);
+  expect(sends[1]?.html).toMatch(/^<details><summary>모두 보기<\/summary>/);
+  expect(sends[1]?.other).toEqual({
+    reply_parameters: { message_id: sends[0]?.message.message_id },
+  });
+});
+
+it("/summarize asks for the fold on top of its verbatim prompt", async () => {
+  const bot = createTestBot(createFakeGemini(textResponse("요약본")));
+  await bot.handlers.onMessage(userMsg({ text: "/summarize https://example.com" }));
+
+  const config = bot.gemini.requests[0]?.config as Record<string, unknown>;
+  expect(config.systemInstruction).toContain("고밀도 정보 분석가");
+  expect(config.systemInstruction).toContain(DETAILS_MARKER);
 });
