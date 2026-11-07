@@ -143,3 +143,25 @@ it("a toggle whose only text is its summary is dropped", () => {
   expect(splitRichHtml(`${TOGGLE}\n</details>`)).toEqual([]);
   expect(splitRichHtml(`${TOGGLE}\n<hr/>\n</details>\n<p>끝</p>`)).toEqual(["<p>끝</p>"]);
 });
+
+const SOURCES = "<details><summary>출처 보기</summary>";
+
+it("each toggle reopens with its own summary, and an emptied one goes without its neighbour", () => {
+  const body = Array.from({ length: 20 }, () => `<p>${"가".repeat(2000)}</p>`).join("\n");
+  const links = Array.from({ length: 2000 }, (_, i) => `- 링크 ${i}<br/>`).join("\n");
+  const html = `${TOGGLE}\n${body}\n</details>\n<hr/>\n${SOURCES}\n<p>${links}</p>\n</details>\n<footer>토큰</footer>`;
+
+  const chunks = splitRichHtml(html);
+
+  expect(chunks.length).toBeGreaterThan(1);
+  expect(chunks[0]).toMatch(/^<details><summary>모두 보기<\/summary>\n<p>가/);
+  expect(chunks.at(-1)).toMatch(/^<details><summary>출처 보기<\/summary><p>/);
+  expect(chunks.at(-1)).toMatch(/<\/details>\n<footer>토큰<\/footer>$/);
+  for (const chunk of chunks) {
+    expect(bytes(chunk)).toBeLessThanOrEqual(MAX_BYTES);
+    expect(chunk).not.toMatch(/<\/summary>(?:<[^>]*>|\s)*<\/details>/);
+  }
+
+  const kept = `${TOGGLE}\n<p>본문</p>\n</details>`;
+  expect(splitRichHtml(`${kept}\n${SOURCES}\n</details>`)).toEqual([kept]);
+});

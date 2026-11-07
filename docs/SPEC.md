@@ -97,14 +97,15 @@ implemented in `src/strings.ts` and nowhere else.
   sentence answer and write `[[DETAILS]]` on its own line before the full text — one
   request, no second model call. The text before the first marker stays visible; every
   other part, code execution included, goes into `<details><summary>모두 보기</summary>`.
-  The footer stays outside the toggle. No marker, nothing before it, or nothing after it
-  → no toggle. Stored model parts keep the marker, so history shows the model its own
+  The closing blocks stay outside this toggle. No marker, nothing before it, or nothing
+  after it → no toggle. Stored model parts keep the marker, so history shows the model its own
   format.
-- Parts assembly: text + `[코드 실행]`/`[실행 결과 ✅|❌]`-labeled pre blocks + footer
-  (`<hr/>` divider, then one `<footer>` block: `🔍 검색어: 'q1', 'q2'`, `📚 출처:` with
-  URI-deduped `- link` lines, and token usage as the last section
-  (`토큰: 입력 N / 출력 N / 생각 N / 합계 N`, from usageMetadata; omitted when the
-  response carries none); sections separated by a blank line).
+- Parts assembly: text + `[코드 실행]`/`[실행 결과 ✅|❌]`-labeled pre blocks + closing
+  blocks: an `<hr/>` divider, then `<details><summary>출처 보기</summary>` holding one
+  paragraph each for `🔍 검색어: 'q1', 'q2'` and `📚 출처:` with URI-deduped `- link` lines
+  (omitted when the response carries neither), then one always-visible `<footer>` block
+  with `토큰: 입력 N / 출력 N / 생각 N / 합계 N` (from usageMetadata; omitted when the
+  response carries none). This applies with or without the `모두 보기` toggle.
 - Splitting: at most 32768 UTF-8 bytes of HTML and 500 block tags (nested ones counted)
   per message, line-based (each block, list item, and table row is its own line), open
   tags closed at boundaries and reopened in the next chunk; overlong single lines are

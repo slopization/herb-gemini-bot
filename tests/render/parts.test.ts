@@ -31,7 +31,7 @@ it("failed execution gets the ❌ label", () => {
   expect(html).toContain("<b>[실행 결과 ❌]</b>");
 });
 
-it("the grounding footer lists queries and URI-deduped sources", () => {
+it("queries and URI-deduped sources sit behind their own toggle", () => {
   const html = renderResponseHtml({
     parts: [{ text: "본문" }],
     groundingMetadata: {
@@ -48,11 +48,12 @@ it("the grounding footer lists queries and URI-deduped sources", () => {
     [
       "<p>본문</p>",
       "<hr/>",
-      "<footer>🔍 <b>검색어</b>: '금리 인상', '한국은행'<br/>",
-      "<br/>",
-      "📚 <b>출처</b>:<br/>",
+      "<details><summary>출처 보기</summary>",
+      "<p>🔍 <b>검색어</b>: '금리 인상', '한국은행'</p>",
+      "<p>📚 <b>출처</b>:<br/>",
       '- <a href="https://a.example">기사 A</a><br/>',
-      '- <a href="https://b.example">B &amp; C</a></footer>',
+      '- <a href="https://b.example">B &amp; C</a></p>',
+      "</details>",
     ].join("\n"),
   );
 });
@@ -62,7 +63,7 @@ it("consecutive text parts are joined into one markdown render", () => {
   expect(html).toBe("<p>이어지는 <b>문장</b>입니다</p>");
 });
 
-it("token usage closes the footer after grounding", () => {
+it("token usage stays visible after the sources toggle", () => {
   const html = renderResponseHtml({
     parts: [{ text: "본문" }],
     groundingMetadata: { webSearchQueries: ["q"] },
@@ -78,9 +79,10 @@ it("token usage closes the footer after grounding", () => {
     [
       "<p>본문</p>",
       "<hr/>",
-      "<footer>🔍 <b>검색어</b>: 'q'<br/>",
-      "<br/>",
-      "<b>토큰</b>: 입력 1,234 / 출력 56 / 생각 789 / 합계 2,079</footer>",
+      "<details><summary>출처 보기</summary>",
+      "<p>🔍 <b>검색어</b>: 'q'</p>",
+      "</details>",
+      "<footer><b>토큰</b>: 입력 1,234 / 출력 56 / 생각 789 / 합계 2,079</footer>",
     ].join("\n"),
   );
 });
@@ -147,6 +149,39 @@ it("the footer stays outside the toggle", () => {
       "<footer><b>토큰</b>: 입력 10 / 출력 5 / 생각 0 / 합계 15</footer>",
     ].join("\n"),
   );
+});
+
+it("a folded reply keeps its sources in a separate toggle and its tokens visible", () => {
+  const html = renderResponseHtml({
+    parts: [{ text: `요약\n${DETAILS_MARKER}\n전문` }],
+    groundingMetadata: {
+      groundingChunks: [{ web: { uri: "https://a.example", title: "기사 A" } }],
+    },
+    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+  });
+
+  expect(html).toBe(
+    [
+      "<p>요약</p>",
+      "<details><summary>모두 보기</summary>",
+      "<p>전문</p>",
+      "</details>",
+      "<hr/>",
+      "<details><summary>출처 보기</summary>",
+      "<p>📚 <b>출처</b>:<br/>",
+      '- <a href="https://a.example">기사 A</a></p>',
+      "</details>",
+      "<footer><b>토큰</b>: 입력 10 / 출력 5 / 생각 0 / 합계 15</footer>",
+    ].join("\n"),
+  );
+});
+
+it("grounding without any queries or sources adds no toggle", () => {
+  const html = renderResponseHtml({
+    parts: [{ text: "본문" }],
+    groundingMetadata: { webSearchQueries: [], groundingChunks: [] },
+  });
+  expect(html).toBe("<p>본문</p>");
 });
 
 it("code the model ran before writing its lead folds, so the lead still comes first", () => {

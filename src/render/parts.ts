@@ -53,12 +53,12 @@ export function renderResponseHtml(input: RenderInput): string {
   const hasImage = input.parts.some((part) => part.inlineData?.mimeType?.startsWith("image/"));
   if (content.length === 0 && !hasImage) return "";
 
-  const footer = [
-    ...renderGroundingFooter(input.groundingMetadata),
+  const closing = [
+    ...renderGrounding(input.groundingMetadata),
     ...renderTokenUsage(input.usageMetadata),
   ];
-  // the divider belongs to the footer as a whole, not to any single section of it
-  if (footer.length > 0) content.push(`<hr/>\n<footer>${footer.join(BR + BR)}</footer>`);
+  // the divider belongs to the closing blocks as a whole, not to any single one of them
+  if (closing.length > 0) content.push("<hr/>", ...closing);
   return content.join("\n");
 }
 
@@ -67,29 +67,26 @@ function foldBehindLead(lead: string, body: string[]): string[] {
   if (lead.trim() === "") return body;
   const visible = markdownToRichHtml(lead);
   if (body.length === 0) return [visible];
-  return [
-    visible,
-    `<details><summary>${strings.render.detailsSummary}</summary>`,
-    ...body,
-    "</details>",
-  ];
+  return [visible, ...toggle(strings.render.detailsSummary, body)];
+}
+
+function toggle(summary: string, body: string[]): string[] {
+  return [`<details><summary>${summary}</summary>`, ...body, "</details>"];
 }
 
 function renderTokenUsage(usage: GenerateContentResponseUsageMetadata | undefined): string[] {
   if (usage?.totalTokenCount === undefined) return [];
   const count = (n: number | undefined): string => (n ?? 0).toLocaleString("en-US");
-  return [
-    strings.render.tokenUsage(
-      count(usage.promptTokenCount),
-      count(usage.candidatesTokenCount),
-      count(usage.thoughtsTokenCount),
-      count(usage.totalTokenCount),
-    ),
-  ];
+  const line = strings.render.tokenUsage(
+    count(usage.promptTokenCount),
+    count(usage.candidatesTokenCount),
+    count(usage.thoughtsTokenCount),
+    count(usage.totalTokenCount),
+  );
+  return [`<footer>${line}</footer>`];
 }
 
-/** Footer sections, each one or more lines already joined by line breaks. */
-function renderGroundingFooter(grounding: GroundingMetadata | undefined): string[] {
+function renderGrounding(grounding: GroundingMetadata | undefined): string[] {
   if (!grounding) return [];
 
   const sections: string[] = [];
@@ -116,5 +113,9 @@ function renderGroundingFooter(grounding: GroundingMetadata | undefined): string
     sections.push(lines.join(BR));
   }
 
-  return sections;
+  if (sections.length === 0) return [];
+  return toggle(
+    strings.render.sourcesSummary,
+    sections.map((section) => `<p>${section}</p>`),
+  );
 }
